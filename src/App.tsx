@@ -4,23 +4,24 @@ import React, { useState, useEffect } from 'react';
 const App = () => {
   const [currentValue, setCurrentValue] = useState<string>('Loading...');
   const [lastUpdatedTimestamp, setLastUpdatedTimestamp] = useState<string>('Loading...');
+  const docRef = Firebase.docRefOf("testcollection", "kItghYhlImgteWHMLkRT");
 
   const fetchInitialValue = async () => {
-    const initialValue = await Firebase.getCurrentValue();
+    const initialValue = await Firebase.getCurrentValue(docRef);
     setCurrentValue(initialValue?.message ?? "No data found");
     setLastUpdatedTimestamp(initialValue?.time ?? 'No data found');
   }
 
   useEffect(() => {
     fetchInitialValue();
-    Firebase.listenToUpdate((data) => {
+    Firebase.listenToUpdate(docRef, (data) => {
       setCurrentValue(data?.message as string);
       setLastUpdatedTimestamp(data?.time as string);
     });
   }, []);
 
   const handleSubmit = (val: string) => {
-    Firebase.updateValue(val);
+    Firebase.updateValue(docRef, val);
   };
 
   return <div>
