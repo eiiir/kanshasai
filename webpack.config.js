@@ -1,11 +1,13 @@
 const path = require('path');
 const HtmlWebpackPlugin = require('html-webpack-plugin');
+const { dir } = require('console');
 
 module.exports = {
   entry: './src/index.tsx',
   output: {
     path: path.resolve(__dirname, 'dist'),
     filename: 'bundle.js',
+    publicPath: '/kanshasai/',
   },
   resolve: {
     extensions: ['.tsx', '.ts', '.js'],
@@ -29,7 +31,12 @@ module.exports = {
     }),
   ],
   devServer: {
-    static: './dist',
+    static: {
+      directory: path.join(__dirname, 'dist'),
+    },
+    historyApiFallback: {
+      index: '/kanshasai/index.html',
+    },
     port: 3000,
   },
 };
