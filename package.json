@@ -11,6 +11,7 @@
   "keywords": [],
   "author": "",
   "license": "ISC",
+  "homepage": "https://eiiir.github.io/kanshasai",
   "dependencies": {
     "firebase": "^11.1.0",
     "react": "^19.0.0",
