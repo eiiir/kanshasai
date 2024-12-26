@@ -34,9 +34,6 @@ module.exports = {
     static: {
       directory: path.join(__dirname, 'dist'),
     },
-    historyApiFallback: {
-      index: '/kanshasai/index.html',
-    },
     port: 3000,
   },
 };

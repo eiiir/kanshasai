@@ -1,18 +1,17 @@
 import { createRoot } from 'react-dom/client';
 import App from './App';
 import './styles.css';
-import { BrowserRouter as Router, Route, Routes } from 'react-router-dom';
+import { HashRouter as Router, Route, Routes, Navigate } from 'react-router-dom';
 import GameMaster from './GameMaster';
 
 const container = document.getElementById('root');
 const root = createRoot(container!);
-const basename = "/kanshasai";
-
 root.render(
-    <Router basename={basename} >
+    <Router>
         <Routes>
-            <Route path="/" element={<App />} />
+            <Route index element={<App />} />
             <Route path="/gm" element={<GameMaster />} />
+            <Route path="*" element={<Navigate to="/" replace />} />
         </Routes>
     </Router>
 );
