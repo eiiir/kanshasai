@@ -20,6 +20,7 @@ const myApp = (fb: FirebaseApp) => {
     const db = getFirestore(fb);
 
     return {
+        db: db,
         docRefOf: (path: string, ...pathSegments: string[]): DocumentReference => {
             return doc(db, path, ...pathSegments);
         },
