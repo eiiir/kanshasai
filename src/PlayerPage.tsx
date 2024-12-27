@@ -5,19 +5,51 @@ import { query, addDoc, FirestoreDataConverter, DocumentData, QueryDocumentSnaps
 import { Link, useParams, useNavigate } from 'react-router-dom';
 import { GameTemplate } from './models';
 import { createConverter } from './converters';
-import { GameInstance } from './GameMaster/GameMasterPage';
+import { GameInstance, getGameInstanceById } from './GameMaster/GameMasterPage';
 
 export const PlayerPage = () => {
     const { gameId, encodedPlayerName } = useParams();
-    const playerName = decodeURIComponent(encodedPlayerName!);
+    return <PlayerPageContent gameId={gameId!} encodedPlayerName={encodedPlayerName!} />;
+}
+
+export type PlayerPageContentProps = {
+    gameId: string,
+    encodedPlayerName: string,
+}
+
+export const PlayerPageContent = ({ gameId, encodedPlayerName }: PlayerPageContentProps) => {
+    const playerName = decodeURIComponent(encodedPlayerName);
+    const [gameInstance, setGameInstance] = useState<GameInstance | null>(null);
+    const [error, setError] = useState('');
+    useEffect(() => {
+        getGameInstanceById(gameId!).then((doc) => {
+            if(doc.exists()) {
+                setGameInstance(doc.data());
+            } else {
+                setError("Game not found by the given ID.");
+            }
+        });
+        Firebase.listenToUpdate(Firebase.docRefOf("games", gameId!), (data) => {
+            setGameInstance(data);
+        });
+    }, [gameId]);
     return (
         <div>
             <h1>Player's Page</h1>
             <p>Game ID: {gameId}</p>
             <p>Player Name: {playerName}</p>
+            { gameInstance ? 
+                <div>
+                    <h2>Game Details</h2>
+                    <p>Current State:</p>
+                    <pre>{JSON.stringify(gameInstance.state, null, 2)}</pre>
+                </div>
+                : null }
+            {error && <p style={{ color: 'red' }}>{error}</p>}
         </div>
     );
 }
+
 
 const addPlayer = async (gameId: string, name: string) => {
     const ref = Firebase.docRefOf("games", gameId).withConverter(createConverter<GameInstance>());

@@ -1,10 +1,11 @@
-import React, { useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useState } from 'react';
 import Firebase from '../Firebase';
-import { query, addDoc, FirestoreDataConverter, DocumentData, QueryDocumentSnapshot, SnapshotOptions, getDocs, deleteDoc, getDoc } from 'firebase/firestore';
+import { query, addDoc, FirestoreDataConverter, DocumentData, QueryDocumentSnapshot, SnapshotOptions, getDocs, deleteDoc, getDoc, setDoc, updateDoc } from 'firebase/firestore';
 import { Link, useParams, useNavigate } from 'react-router-dom';
-import { GameTemplate } from '../models';
+import { GameState, GameTemplate, Question, GameStateWithoutDynamicFields } from '../models';
 import { AddGameTemplateModule } from './AddGameTemplateModule';
 import { createConverter } from '../converters';
+import { PlayerPageContent } from '../PlayerPage';
 
 const getAllGameTemplates = async () => {
     const ref = Firebase.collectionRefOf("gameTemplates").withConverter(createConverter<GameTemplate>());
@@ -70,6 +71,7 @@ export type GameInstance = {
     players: string[];
     questionIDs: string[];
     createdAt: string;
+    state: GameState;
 }
 
 const getGameInstancesByTemplateId = async (templateId: string) => {
@@ -110,7 +112,8 @@ const GameInstancesListModule = ({ template }: GameInstancesModuleProps) => {
                         gameTemplateID: template.ID!,
                         players: [],
                         questionIDs: template.questionIds,
-                        createdAt: new Date().toISOString(),
+                        createdAt: new Date().toLocaleString('ja-JP', { timeZone: 'Asia/Tokyo', hour12: false }),
+                        state: { phase: 'created', startedAt: new Date().getTime() },
                     }
 
                     addDoc(Firebase.collectionRefOf("games"), gameInstance).then(() => {
@@ -152,37 +155,146 @@ type GameInstancePageProps = {
     //TODO
 }
 
-const getGameInstanceById = async (gameId: string) => {
+export const getGameInstanceById = async (gameId: string) => {
     const ref = Firebase.docRefOf("games", gameId).withConverter(createConverter<GameInstance>());
     return getDoc(ref);
 }
+
+export const getQuestionsByIds = async (questionIds: string[]) => {
+    const questions: Question[] = [];
+    for (const questionId of questionIds) {
+        const ref = Firebase.docRefOf("questions", questionId).withConverter(createConverter<Question>());
+        const doc = await getDoc(ref);
+        if (doc.exists()) {
+            questions.push(doc.data());
+        }
+    }
+    return questions;
+}
+
+export const getAllStatesForGame = async (game: GameInstance): Promise<GameStateWithoutDynamicFields[]> => {
+    const states: GameStateWithoutDynamicFields[] = [];
+    states.push({ phase: 'created' });
+    states.push({ phase: 'started' });
+    const questions = await getQuestionsByIds(game.questionIDs);
+    questions.forEach((question, i) => {
+        const questionNumber = i + 1;
+        states.push({ phase: 'readQuestion', questionNumber, questionText: question.questionText });
+        states.push({ 
+            phase: 'countDown',
+            timeLimitSeconds: 10,
+            questionNumber,
+            questionText: question.questionText,
+            options: question.options,
+        });
+        states.push({ phase: 'answerCheck', questionNumber });
+        states.push({ 
+            phase: 'revealAnswer',
+            questionNumber,
+            correctOption: question.correctOption,
+            ...(question.optionSuppliments && { optionSuppliments: question.optionSuppliments }),
+        });
+    });
+    states.push({ phase: 'lastQuestionDone' });
+    states.push({ phase: 'showResults' });
+    states.push({ phase: 'ended'});
+    return states;
+};
+
+export const updateState = async (gameId: string, newState: GameState) => {
+    const docRef = Firebase.docRefOf("games", gameId);
+    await updateDoc(docRef, { state: newState });
+};
 
 export const GameInstancePage = ({}: GameInstancePageProps) => {
     const { gameId } = useParams();
     const navigate = useNavigate();
     const [gameInstance, setGameInstance] = useState<GameInstance | null>(null);
+    const [statesWithoutDynamicFields, setStatesWithoutDynamicFields] = useState<GameStateWithoutDynamicFields[]>([]);
+    const [stateIndex, setStateIndex] = useState(0);
     const [loading, setLoading] = useState(true);
     useEffect(() => {
         getGameInstanceById(gameId!).then((doc) => {
             if(doc.exists()) {
                 setGameInstance(doc.data());
+                getAllStatesForGame(doc.data()).then((states) => {
+                    setStatesWithoutDynamicFields(states);
+                    const currentState = doc.data().state;
+                    const currentStateIndex = states.findIndex((state) => {
+                        if ("questionNumber" in currentState) {
+                            return state.phase === currentState.phase && state.questionNumber === currentState.questionNumber;
+                        } else {
+                            return state.phase === currentState.phase;
+                        }
+                    });
+                    setStateIndex(currentStateIndex);
+                });
             } else {
                 console.log(`No such document of ID: ${gameId}`);
+                setGameInstance(null);
             }
         });
         setLoading(false);
+        Firebase.listenToUpdate(Firebase.docRefOf("games", gameId!), (data) => {
+            setGameInstance(data);
+        });
     }, [gameId]);
+
+    const moveToNextState = useCallback((stateIndex: number, statesWithoutDynamicFields: GameStateWithoutDynamicFields[]) => {
+        if (stateIndex >= statesWithoutDynamicFields.length - 1) {
+            return;
+        }
+        const nextState = statesWithoutDynamicFields[stateIndex + 1];
+        const stateToSet: any = { ...nextState, startedAt: new Date().getTime() };
+        if (nextState.phase === 'answerCheck' || nextState.phase === 'revealAnswer') {
+            //TODO update answerCounts
+            const answerCounts = { a: 1, b: 2, c: 3, d: 4 };
+            stateToSet['answerCounts'] = answerCounts;
+        }
+        if (nextState.phase === 'showResults') {
+            //TODO update rankings
+            const rankings = Array.from({ length: 20 }, (_, i) => ({
+                player: `Player${i + 1}`,
+                correctAnswers: Math.floor(Math.random() * 10),
+                accumulatedTimeSeconds: Math.floor(Math.random() * 100),
+            }));
+            stateToSet['rankings'] = rankings;
+        }
+        updateState(gameId!, stateToSet as GameState).then(() => {
+            setStateIndex(stateIndex + 1);
+        });
+    }, [setStateIndex]);
 
     return (
         <div>
             <h1>Game Instance Page</h1>
             <p>Game ID: {gameId}</p>
+            <button onClick={() => {
+                navigator.clipboard.writeText(`${window.location.origin}/game/${gameId}`);
+            }}>
+                <span role="img" aria-label="clipboard">📋</span> Copy Join Link
+            </button>
             {loading ?
                     <p>Loading...</p>
                 : gameInstance == null ?
                     <p>Game not found by ID = ${gameId}</p>
                 :
                     <div>
+                        <p>GM Control</p>
+                        <div style={{ border: '1px solid red', padding: '10px', margin: '10px' }}>
+                            <p>Current State:</p>
+                            <pre>{JSON.stringify(gameInstance.state, null, 2)}</pre>
+                            <p>Next State:</p>
+                            {stateIndex + 1 < statesWithoutDynamicFields.length ? (
+                                <pre>{JSON.stringify(statesWithoutDynamicFields[stateIndex + 1], null, 2)}</pre>
+                                ): "None"
+                            }
+                            <button onClick={() => moveToNextState(stateIndex, statesWithoutDynamicFields)}>Move to Next State</button>
+                        </div>
+                        <p>Player's view</p>
+                        <div style={{ border: '1px solid black', padding: '10px', margin: '10px' }}>
+                            <PlayerPageContent gameId={gameId!} encodedPlayerName="GameMaster" />
+                        </div>
                         <p>Game Template ID: ${gameInstance!.gameTemplateID}</p>
                         <p>Questions: {gameInstance!.questionIDs.join(', ')}</p>
                         <p>Created At: {gameInstance!.createdAt}</p>
@@ -194,16 +306,6 @@ export const GameInstancePage = ({}: GameInstancePageProps) => {
                                 </li>
                             ))}
                         </ul>
-                        <div>
-                            <button onClick={() => { navigate(`/game/${gameId}`); }}>Join game</button> 
-                        </div>
-                        <div>
-                            <button onClick={() => {
-                                navigator.clipboard.writeText(`${window.location.origin}/game/${gameId}`);
-                            }}>
-                                <span role="img" aria-label="clipboard">📋</span> Copy Join Link
-                            </button>
-                        </div>
                     </div>
             }
             <p/>
