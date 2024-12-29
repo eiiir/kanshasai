@@ -8,13 +8,16 @@ export type GameTemplate = {
 export type Question = {
     ID?: string,
     questionText: string,
+    questionImageUrl?: string,
     correctOption: 'a' | 'b' | 'c' | 'd',
+    timeLimitSeconds: 10 | 15,
     options: {
         a: string,
         b: string,
         c: string,
         d: string,
     },
+    questionSupplimentImageUrl?: string,
     optionSuppliments?: {
         a?: string,
         b?: string,
@@ -46,18 +49,28 @@ export type CountDownPhase = {
     timeLimitSeconds: number,
     questionNumber: number,
     questionText: string,
+    questionImageUrl?: string,
     options: {
         a: string,
         b: string,
         c: string,
         d: string,
-    }
+    },
+    isLastQuestion: boolean,
 }
 
 export type AnswerCheckPhase = {
     phase: 'answerCheck',
     startedAt: number,
     questionNumber: number,
+    questionText: string,
+    questionImageUrl?: string,
+    options: {
+        a: string,
+        b: string,
+        c: string,
+        d: string,
+    },
     answerCounts: {
         a: number,
         b: number,
@@ -70,6 +83,14 @@ export type RevealAnswerPhase = {
     phase: 'revealAnswer',
     startedAt: number,
     questionNumber: number,
+    questionText: string,
+    questionImageUrl?: string,
+    options: {
+        a: string,
+        b: string,
+        c: string,
+        d: string,
+    },
     correctOption: 'a' | 'b' | 'c' | 'd',
     answerCounts: {
         a: number,
@@ -77,6 +98,7 @@ export type RevealAnswerPhase = {
         c: number,
         d: number,
     },
+    questionSupplimentImageUrl?: string,
     optionSuppliments?: {
         a?: string,
         b?: string,

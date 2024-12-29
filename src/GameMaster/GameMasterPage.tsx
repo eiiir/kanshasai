@@ -186,12 +186,22 @@ export const getAllStatesForGame = async (game: GameInstance): Promise<GameState
             questionNumber,
             questionText: question.questionText,
             options: question.options,
+            isLastQuestion: questionNumber === questions.length,
+            ...(question.questionImageUrl && { questionImageUrl: question.questionImageUrl }),
         });
-        states.push({ phase: 'answerCheck', questionNumber });
+        states.push({ 
+            phase: 'answerCheck',
+            questionNumber,
+            questionText: question.questionText,
+            options: question.options,
+         });
         states.push({ 
             phase: 'revealAnswer',
             questionNumber,
+            questionText: question.questionText,
+            options: question.options,
             correctOption: question.correctOption,
+            ...(question.questionSupplimentImageUrl && { questionSupplimentImageUrl: question.questionSupplimentImageUrl }),
             ...(question.optionSuppliments && { optionSuppliments: question.optionSuppliments }),
         });
     });
