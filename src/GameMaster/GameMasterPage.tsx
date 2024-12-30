@@ -2,7 +2,7 @@ import React, { useCallback, useEffect, useState } from 'react';
 import Firebase from '../Firebase';
 import { query, addDoc, FirestoreDataConverter, DocumentData, QueryDocumentSnapshot, SnapshotOptions, getDocs, deleteDoc, getDoc, setDoc, updateDoc, where } from 'firebase/firestore';
 import { Link, useParams, useNavigate } from 'react-router-dom';
-import { GameState, GameTemplate, Question, GameStateWithoutDynamicFields, Answer } from '../models';
+import { GameState, GameTemplate, Question, GameStateWithoutDynamicFields, Answer, AnswerOption } from '../models';
 import { AddGameTemplateModule } from './AddGameTemplateModule';
 import { createConverter } from '../converters';
 import { PlayerPageContent } from '../PlayerPage';
@@ -230,6 +230,12 @@ export const updateState = async (gameId: string, newState: GameState) => {
     await updateDoc(docRef, { state: newState });
 };
 
+export const getAnswers = async (gameId: string, questionId: string) => {
+    const collectionRef = Firebase.collectionRefOf("answers").withConverter(createConverter<Answer>())
+    const q = query(collectionRef, where('gameId', '==', gameId), where('questionId', '==', questionId))
+    return await getDocs(q)
+}
+
 export const GameInstancePage = ({}: GameInstancePageProps) => {
     const { gameId } = useParams();
     const navigate = useNavigate();
@@ -264,15 +270,21 @@ export const GameInstancePage = ({}: GameInstancePageProps) => {
         });
     }, [gameId]);
 
-    const moveToNextState = useCallback((stateIndex: number, statesWithoutDynamicFields: GameStateWithoutDynamicFields[]) => {
+    const moveToNextState = useCallback(async (stateIndex: number, statesWithoutDynamicFields: GameStateWithoutDynamicFields[]) => {
         if (stateIndex >= statesWithoutDynamicFields.length - 1) {
             return;
         }
         const nextState = statesWithoutDynamicFields[stateIndex + 1];
         const stateToSet: any = { ...nextState, startedAt: new Date().getTime() };
         if (nextState.phase === 'answerCheck' || nextState.phase === 'revealAnswer') {
-            //TODO update answerCounts
-            const answerCounts = { a: 1, b: 2, c: 3, d: 4 };
+            const querySnapshot = await getAnswers(gameId!, nextState.questionId);
+            const answerCounts = querySnapshot.docs
+                .map((doc) => doc.data() as Answer)
+                .reduce(
+                    (acc, answer) => {
+                        acc[answer.option] = acc[answer.option] + 1;
+                        return acc;
+                    }, { a: 0, b: 0, c: 0, d: 0 });
             stateToSet['answerCounts'] = answerCounts;
         }
         if (nextState.phase === 'showResults') {
