@@ -119,7 +119,7 @@ export type LastQuestionDonePhase = {
 export type ShowResultsPhase = {
     phase: 'showResults',
     startedAt: number,
-    rankings: { player: string, correctAnswers: number, accumulatedTimeSeconds: number }[],
+    rankings: { player: string, correctAnswers: number, averageTimeLeftSeconds: number }[],
 }
 
 export type EndedPhase = {

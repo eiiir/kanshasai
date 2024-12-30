@@ -311,7 +311,7 @@ export const ShowResultsGameStateComponent = ({ state }: {state: ShowResultsPhas
             <h1>Game Results</h1>
             <ol>
                 {state.rankings.map((ranking, i) => (
-                    <li key={i}>{ranking.player} - {ranking.correctAnswers} correct answers in {ranking.accumulatedTimeSeconds} seconds</li>
+                    <li key={i}>{ranking.player} - {ranking.correctAnswers} correct answers in {ranking.averageTimeLeftSeconds.toFixed(3)} seconds</li>
                 ))}
             </ol>
         </div>

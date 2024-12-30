@@ -233,7 +233,7 @@ export const updateState = async (gameId: string, newState: GameState) => {
 export const getAnswers = async (gameId: string, questionId: string) => {
     const collectionRef = Firebase.collectionRefOf("answers").withConverter(createConverter<Answer>())
     const q = query(collectionRef, where('gameId', '==', gameId), where('questionId', '==', questionId))
-    return await getDocs(q)
+    return getDocs(q)
 }
 
 export const GameInstancePage = ({}: GameInstancePageProps) => {
@@ -279,7 +279,7 @@ export const GameInstancePage = ({}: GameInstancePageProps) => {
         if (nextState.phase === 'answerCheck' || nextState.phase === 'revealAnswer') {
             const querySnapshot = await getAnswers(gameId!, nextState.questionId);
             const answerCounts = querySnapshot.docs
-                .map((doc) => doc.data() as Answer)
+                .map((doc) => doc.data())
                 .reduce(
                     (acc, answer) => {
                         acc[answer.option] = acc[answer.option] + 1;
@@ -288,18 +288,44 @@ export const GameInstancePage = ({}: GameInstancePageProps) => {
             stateToSet['answerCounts'] = answerCounts;
         }
         if (nextState.phase === 'showResults') {
-            //TODO update rankings
-            const rankings = Array.from({ length: 20 }, (_, i) => ({
-                player: `Player${i + 1}`,
-                correctAnswers: Math.floor(Math.random() * 10),
-                accumulatedTimeSeconds: Math.floor(Math.random() * 100),
-            }));
+            const allAnswers = await getAllAnswersByGameId(gameId!)
+            const correctAnswersMap = statesWithoutDynamicFields
+                .filter((state) => state.phase === 'revealAnswer')
+                .map((state) => ({ questionId: state.questionId, correctOption: state.correctOption }))
+                .reduce((acc, { questionId, correctOption }) => {
+                    acc[questionId] = correctOption;
+                    return acc;
+                }, {} as { [questionId: string]: string });
+            const playerIdToPointsAndAccumulatedTime = allAnswers.docs.map((doc) => doc.data())
+                .reduce((acc, { playerId, option, questionId, timeLeftMillis }) => {
+                        const isCorrect = option === correctAnswersMap[questionId]
+                        acc[playerId] = acc[playerId] ?? { points: 0, accumulatedTimeLeft: 0 }
+                        acc[playerId].points = (acc[playerId]?.points ?? 0) + ( isCorrect ? 1 : 0)
+                        acc[playerId].accumulatedTimeLeft = (acc[playerId]?.accumulatedTimeLeft ?? 0) + (isCorrect ? timeLeftMillis : 0)
+                        return acc;
+                    }, {} as { [playerId: string]: { points: number, accumulatedTimeLeft: number } }
+                );
+            const rankings = Object.entries(gameInstance!.players).map(([playerId, playerName]) => {
+                const correctAnswers = playerIdToPointsAndAccumulatedTime[playerId]?.points ?? 0
+                const accumulatedTimeLeftSeconds = playerIdToPointsAndAccumulatedTime[playerId]?.accumulatedTimeLeft ?? 0.0
+                return {
+                    player: playerName,
+                    correctAnswers,
+                    averageTimeLeftSeconds: correctAnswers == 0 ? 0 : accumulatedTimeLeftSeconds / correctAnswers / 1000,
+                };
+            }).sort((a, b) => {
+                if (a.correctAnswers === b.correctAnswers) {
+                    return b.averageTimeLeftSeconds - a.averageTimeLeftSeconds
+                } else {
+                    return b.correctAnswers - a.correctAnswers
+                }
+            })
             stateToSet['rankings'] = rankings;
         }
         updateState(gameId!, stateToSet as GameState).then(() => {
             setStateIndex(stateIndex + 1);
         });
-    }, [setStateIndex]);
+    }, [setStateIndex, gameId, gameInstance]);
 
     return (
         <div>
