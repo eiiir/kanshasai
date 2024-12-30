@@ -1,31 +1,39 @@
 
-import React, { FormEventHandler, useEffect, useState } from 'react';
+import React, { FormEventHandler, useEffect, useState, useCallback } from 'react';
 import Firebase from './Firebase';
-import { query, addDoc, FirestoreDataConverter, DocumentData, QueryDocumentSnapshot, SnapshotOptions, getDocs, deleteDoc, runTransaction } from 'firebase/firestore';
+import { query, addDoc, FirestoreDataConverter, DocumentData, QueryDocumentSnapshot, SnapshotOptions, getDocs, deleteDoc, runTransaction, getDoc, setDoc, updateDoc } from 'firebase/firestore';
 import { Link, useParams, useNavigate } from 'react-router-dom';
-import { GameTemplate, GameState, ReadQuestionPhase, CountDownPhase, AnswerCheckPhase, RevealAnswerPhase, LastQuestionDonePhase, ShowResultsPhase } from './models';
+import { GameTemplate, GameState, ReadQuestionPhase, CountDownPhase, AnswerCheckPhase, RevealAnswerPhase, LastQuestionDonePhase, ShowResultsPhase, AnswerOption, Answer } from './models';
 import { createConverter } from './converters';
 import { GameInstance, getGameInstanceById } from './GameMaster/GameMasterPage';
 import { useVolume } from './GlobalComponent';
 
 export const PlayerPage = () => {
-    const { gameId, encodedPlayerName } = useParams();
-    return <PlayerPageContent gameId={gameId!} encodedPlayerName={encodedPlayerName!} />;
+    const { gameId, playerId } = useParams();
+    return <PlayerPageContent gameId={gameId!} playerId={playerId!} />;
 }
 
 export type PlayerPageContentProps = {
     gameId: string,
-    encodedPlayerName: string,
+    playerId: string,
 }
 
-export const PlayerPageContent = ({ gameId, encodedPlayerName }: PlayerPageContentProps) => {
-    const playerName = decodeURIComponent(encodedPlayerName);
+export const PlayerPageContent = ({ gameId, playerId }: PlayerPageContentProps) => {
     const [gameInstance, setGameInstance] = useState<GameInstance | null>(null);
+    const [hasInteracted, setHasInteracted] = useState(false);
+    const [playerName, setPlayerName] = useState('');
     const [error, setError] = useState('');
+
     useEffect(() => {
         getGameInstanceById(gameId!).then((doc) => {
             if(doc.exists()) {
                 setGameInstance(doc.data());
+                const maybePlayerName = doc.data().players[playerId];
+                if (!maybePlayerName) {
+                    setError("Player not found by the given ID.");
+                } else {
+                    setPlayerName(maybePlayerName);
+                }
             } else {
                 setError("Game not found by the given ID.");
             }
@@ -34,25 +42,41 @@ export const PlayerPageContent = ({ gameId, encodedPlayerName }: PlayerPageConte
             setGameInstance(data);
         });
     }, [gameId]);
+    const onInteract = useCallback(() => {
+        setHasInteracted(true);
+    }, [setHasInteracted]);
     return (
-        <div>
-            <h1>Player's Page</h1>
-            <p>Game ID: {gameId}</p>
-            <p>Player Name: {playerName}</p>
-            { gameInstance ? 
-                <div>
-                    <GameStateComponent state={gameInstance.state} />
-                    <h2>Game Details</h2>
-                    <p>Current State:</p>
-                    <pre>{JSON.stringify(gameInstance.state, null, 2)}</pre>
-                </div>
-                : null }
-            {error && <p style={{ color: 'red' }}>{error}</p>}
+        <div onClick={onInteract}>
+            { !hasInteracted ? <InteractRequiredOverlayComponent />
+                : (<>
+                    <h1>Player's Page</h1>
+                    <p>Game ID: {gameId}</p>
+                    <p>Player Name: {playerName}</p>
+                    { gameInstance ? 
+                        <div>
+                            <GameStateComponent state={gameInstance.state} gameId={gameId} playerId={playerId} />
+                            <h2>Game Details</h2>
+                            <p>Current State:</p>
+                            <pre>{JSON.stringify(gameInstance.state, null, 2)}</pre>
+                        </div>
+                        : null }
+                    {error && <p style={{ color: 'red' }}>{error}</p>}
+                </>
+                )
+            }
         </div>
     );
 }
 
-export const GameStateComponent = ({ state }: { state: GameState }) => {
+export const InteractRequiredOverlayComponent = () => {
+    return (
+        <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', height: '100vh' }}>
+            <p>Click anywhere to start the game.</p>
+        </div>
+    );
+}
+
+export const GameStateComponent = ({ state, gameId, playerId }: { state: GameState, gameId: string, playerId: string }) => {
     switch (state.phase) {
         case 'created':
             return <p>Waiting for the Game Master to start the game...</p>;
@@ -61,11 +85,9 @@ export const GameStateComponent = ({ state }: { state: GameState }) => {
         case 'readQuestion':
             return <ReadQuestionGameStateComponent state={state} />;
         case 'countDown':
-            return <CountDownGameStateComponent state={state} />;
         case 'answerCheck':
-            return <AnswerCheckGameStateComponent state={state} />;
         case 'revealAnswer':
-            return <RevealAnswerGameStateComponent state={state} />;
+            return <QuestionGameStatesComponent state={state} gameId={gameId} playerId={playerId} />
         case 'lastQuestionDone':
             return <LastQuestionDoneGameStateComponent state={state} />;
         case 'showResults':
@@ -101,26 +123,45 @@ export const ReadQuestionGameStateComponent = ({ state }: {state: ReadQuestionPh
     );
 }
 
-export const CountDownGameStateComponent = ({ state }: {state: CountDownPhase}) => {
-    const { isLastQuestion, timeLimitSeconds, questionNumber, questionText, questionImageUrl, options, startedAt }
-        = state;
+export const submitAnswer = async (gameId: string, questionId: string, playerId: string, option: AnswerOption, timeLeftMillis: number ) => {
+    const docRef = Firebase.docRefOf("answers", `${gameId}_${questionId}_${playerId}`);
+    await setDoc(docRef, { gameId, playerId, questionId, option, timeLeftMillis });
+}
+
+export const QuestionGameStatesComponent = ({ state, gameId, playerId }: {state: CountDownPhase | AnswerCheckPhase | RevealAnswerPhase, gameId: string, playerId: string }) => {
+    const fallback = {
+        isLastQuestion: false,
+        timeLimitSeconds: 10,
+        answerCounts: undefined,
+        correctOption: undefined,
+        optionSuppliments: undefined,
+        optionSupplimentImageUrl: undefined,
+        questionSupplimentImageUrl: undefined,
+    };
+    const { isLastQuestion, timeLimitSeconds, questionId, questionNumber, questionText, questionImageUrl, options, startedAt, answerCounts, correctOption, 
+        optionSuppliments, optionSupplimentImageUrl, questionSupplimentImageUrl,
+      }
+        = { ...fallback, ...state };
+    const getTimeLeft = () => {
+        const timePassed = (Date.now() - startedAt) / 1000;
+        return Math.max(timeLimitSeconds - timePassed, 0);
+    }
     const { getAudio } = useVolume();
-    const timePassed = (Date.now() - startedAt) / 1000;
-    const initialTimeLeft = Math.max(Math.floor(timeLimitSeconds - timePassed), 0);
-    const [timeLeft, setTimeLeft] = useState(timeLimitSeconds);
+    const [timeLeft, setTimeLeft] = useState(state.phase === 'countDown' ? Math.floor(getTimeLeft()) : 0);
+    const [answer, setAnswer] = useState<Answer | null>(null);
 
     useEffect(() => {
-        const src = `/audio/count_down_${timeLimitSeconds}s.mp3`;
-        const audio = getAudio(src);
-        const currentTimeToSet = (timeLimitSeconds - initialTimeLeft) * audio.duration;
-        audio.currentTime = currentTimeToSet;
-        audio.play();
-    }, []);
-
+        const unsubscribe = Firebase.listenToUpdate(Firebase.docRefOf("answers", `${gameId}_${questionId}_${playerId}`).withConverter(createConverter<Answer>()), (data) => {
+            if (data) {
+                setAnswer(data);
+            }
+        });
+        return () => unsubscribe();
+    }, [gameId, state.questionId, playerId]);
 
     useEffect(() => {
         if (timeLeft === 0) {
-            if (isLastQuestion) {
+            if (isLastQuestion && state.phase === 'countDown') {
                 const audio = getAudio('/audio/last_question_done.mp3');
                 audio.play();
             }
@@ -131,6 +172,32 @@ export const CountDownGameStateComponent = ({ state }: {state: CountDownPhase}) 
         }, 1000);
         return () => clearInterval(timerId);
     }, [timeLeft]);
+    useEffect(() => {
+        switch (state.phase) {
+            case 'countDown': {
+                const src = `/audio/count_down_${timeLimitSeconds}s.mp3`;
+                const audio = getAudio(src);
+                const currentTimeToSet = (timeLimitSeconds - Math.floor(getTimeLeft()));
+                audio.currentTime = currentTimeToSet;
+                audio.play();
+                return;
+            }
+            case 'answerCheck': {
+                const audio = getAudio('/audio/answer_check.mp3');
+                audio.play();
+                return;
+            }
+            case 'revealAnswer': {
+                const audio = getAudio('/audio/reveal_answer.mp3');
+                audio.play();
+                return;
+            }
+        }
+    }, [state.phase])
+
+    const onOptionClick = useCallback(({ option }: { option: AnswerOption}) => {
+        submitAnswer(gameId, questionId, playerId, option, getTimeLeft() * 1000);
+    }, [gameId, questionId, playerId])
 
     return (
         <QuestionComponent
@@ -139,6 +206,13 @@ export const CountDownGameStateComponent = ({ state }: {state: CountDownPhase}) 
             questionImageUrl={questionImageUrl}
             options={options}
             timeLeft={timeLeft}
+            answerCounts={answerCounts}
+            correctOption={correctOption}
+            optionSuppliments={optionSuppliments}
+            optionSupplimentImageUrl={optionSupplimentImageUrl}
+            questionSupplimentImageUrl={questionSupplimentImageUrl}
+            optionChosen={answer?.option}
+            onOptionClick={state.phase === 'countDown' && timeLeft > 0 ? onOptionClick : undefined}
         />
     )
 }
@@ -168,10 +242,12 @@ export type QuestionComponentProps = {
         c: number,
         d: number,
     },
-    correctOption?: 'a' | 'b' | 'c' | 'd',
+    correctOption?: AnswerOption,
+    onOptionClick?: ({ option }: { option: AnswerOption }) => void,
+    optionChosen?: AnswerOption,
 }
 
-export const QuestionComponent = ({ questionSupplimentImageUrl, correctOption, answerCounts, timeLeft, questionNumber, optionSuppliments, questionText, questionImageUrl, options }: QuestionComponentProps) => {
+export const QuestionComponent = ({ questionSupplimentImageUrl, correctOption, answerCounts, timeLeft, questionNumber, optionSuppliments, questionText, questionImageUrl, options, onOptionClick, optionChosen }: QuestionComponentProps) => {
     return (
         <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', height: '100vh' }}>
             <h1>Question #{questionNumber}</h1>
@@ -183,59 +259,33 @@ export const QuestionComponent = ({ questionSupplimentImageUrl, correctOption, a
             }
             <p>{questionText}</p>
             <ul>
-                <li style={correctOption == 'a' ? {color: 'red'} : {}}>{options.a} {answerCounts?.a} {optionSuppliments?.a ? `(${optionSuppliments!.a})` : ''}"</li>
-                <li style={correctOption == 'b' ? {color: 'red'} : {}}>{options.b} {answerCounts?.b} {optionSuppliments?.b ? `(${optionSuppliments!.b})` : ''}"</li>
-                <li style={correctOption == 'c' ? {color: 'red'} : {}}>{options.c} {answerCounts?.c} {optionSuppliments?.c ? `(${optionSuppliments!.c})` : ''}"</li>
-                <li style={correctOption == 'd' ? {color: 'red'} : {}}>{options.d} {answerCounts?.d} {optionSuppliments?.d ? `(${optionSuppliments!.d})` : ''}"</li>
+                <li 
+                    style={correctOption == 'a' ? {color: 'red'} : {}} 
+                    onClick={onOptionClick ? () => onOptionClick({ option: 'a' }) : undefined}
+                >
+                    {optionChosen === 'a' ? '✔️' : ''} {options.a} {answerCounts?.a} {optionSuppliments?.a ? `(${optionSuppliments!.a})` : ''}
+                </li>
+                <li 
+                    style={correctOption == 'b' ? {color: 'red'} : {}} 
+                    onClick={onOptionClick ? () => onOptionClick({ option: 'b' }) : undefined}
+                >
+                    {optionChosen === 'b' ? '✔️' : ''} {options.b} {answerCounts?.b} {optionSuppliments?.b ? `(${optionSuppliments!.b})` : ''}
+                </li>
+                <li 
+                    style={correctOption == 'c' ? {color: 'red'} : {}} 
+                    onClick={onOptionClick ? () => onOptionClick({ option: 'c' }) : undefined}
+                >
+                    {optionChosen === 'c' ? '✔️' : ''} {options.c} {answerCounts?.c} {optionSuppliments?.c ? `(${optionSuppliments!.c})` : ''}
+                </li>
+                <li 
+                    style={correctOption == 'd' ? {color: 'red'} : {}} 
+                    onClick={onOptionClick ? () => onOptionClick({ option: 'd' }) : undefined}
+                >
+                    {optionChosen === 'd' ? '✔️' : ''} {options.d} {answerCounts?.d} {optionSuppliments?.d ? `(${optionSuppliments!.d})` : ''}
+                </li>
             </ul>
             <h2>Time Left: {timeLeft} seconds</h2>
         </div>
-    );
-}
-
-export const AnswerCheckGameStateComponent = ({ state }: {state: AnswerCheckPhase}) => {
-    const { questionNumber, questionText, questionImageUrl, options, startedAt }
-        = state;
-    const { getAudio } = useVolume();
-    useEffect(() => {
-        const audio = getAudio('/audio/answer_check.mp3');
-        audio.play();
-    }, []);
-
-    return (
-        <QuestionComponent
-            questionNumber={questionNumber}
-            questionText={questionText}
-            questionImageUrl={questionImageUrl}
-            options={options}
-            timeLeft={0}
-            answerCounts={state.answerCounts}
-        />
-    )
-}
-
-export const RevealAnswerGameStateComponent = ({ state }: {state: RevealAnswerPhase}) => {
-    const { questionNumber, correctOption, answerCounts, questionSupplimentImageUrl, options, optionSuppliments, startedAt }
-        = state;
-    const { getAudio } = useVolume();
-    useEffect(() => {
-        const audio = getAudio('/audio/reveal_answer.mp3');
-        audio.play();
-    }, []);
-
-    return (
-        <QuestionComponent
-            questionNumber={questionNumber}
-            questionText={state.questionText}
-            questionImageUrl={state.questionImageUrl}
-            options={options}
-            timeLeft={0}
-            answerCounts={answerCounts}
-            correctOption={correctOption}
-            optionSuppliments={optionSuppliments}
-            optionSupplimentImageUrl={questionSupplimentImageUrl}
-            questionSupplimentImageUrl={state.questionSupplimentImageUrl}
-        />
     );
 }
 
@@ -269,19 +319,20 @@ export const ShowResultsGameStateComponent = ({ state }: {state: ShowResultsPhas
 }
 
 
-const addPlayer = async (gameId: string, name: string) => {
+const addPlayer = async (gameId: string, name: string): Promise<string> => {
     const ref = Firebase.docRefOf("games", gameId).withConverter(createConverter<GameInstance>());
-    const updatedDoc = await runTransaction(Firebase.db, async (transaction) => {
+    return await runTransaction(Firebase.db, async (transaction) => {
         const gameDoc = await transaction.get(ref);
         if (!gameDoc.exists()) {
-            throw new Error("Game does not exist!");
+            throw new Error(`GameID ${gameId} does not exist!`);
         }
-        console.log("Game data: ", gameDoc.data());
         const players = gameDoc.data().players
-        if (!players.includes(name)) {
-            transaction.update(ref, { players: [ ...players, name ] });
+        if (!Object.values(players).includes(name)) {
+            const playerID = Math.random().toString(36).substring(2, 15);
+            transaction.update(ref, { players: { ...players, [playerID]: name } });
+            return playerID;
         } else {
-            console.log(`Player name ${name} already exists in the game.`);
+            throw new Error(`Player name ${name} already exists in the game.`);
         }
     });
 }
@@ -303,8 +354,8 @@ export const JoinGameModule = () => {
 
         setError('');
 
-        addPlayer(gameId!, trimmedName).then(() => {
-            navigate(`/game/${gameId}/${encodeURIComponent(trimmedName)}`);
+        addPlayer(gameId!, trimmedName).then((playerId) => {
+            navigate(`/game/${gameId}/${playerId}`);
         }).catch((error) => {
             setError(error.message);
         });

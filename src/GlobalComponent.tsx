@@ -12,7 +12,6 @@ const VolumeContext = createContext({
     setVolume: (volume: number) => {},
     setMuted: (muted: boolean) => {},
     getAudio: (src: string) => { return new Audio(src); },
-    setImplicitlyMuted: (implicitlyMuted: boolean) => {},
 });
 
 export const VolumeProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
@@ -29,9 +28,8 @@ export const VolumeProvider: React.FC<{ children: React.ReactNode }> = ({ childr
         '/audio/volume_check.mp3',
     ];
     const [volume, rawSetVolume] = useState(1);
-    const [rawMuted, rawSetMuted] = useState(false);
-    const [implicitlyMuted, setImplicitlyMuted] = useState(true);
-    const [audios, setAudios] = useState<{ [src: string]: HTMLAudioElement }>(
+    const [muted, rawSetMuted] = useState(false);
+    const [audios, _] = useState<{ [src: string]: HTMLAudioElement }>(
         allAudios.reduce((acc, src) => ({ ...acc, [src]: new Audio(src) }), {})
     );
     useEffect(() => {
@@ -54,7 +52,7 @@ export const VolumeProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     const getAudio = (src: string): HTMLAudioElement => {
         const audio = audios[src];
         audio.volume = volume;
-        audio.muted = implicitlyMuted || rawMuted;
+        audio.muted = muted;
         return audio;
     }
 
@@ -77,11 +75,11 @@ export const VolumeProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     }, [volume]);
 
     useEffect(() => {
-        localStorage.setItem('muted', rawMuted.toString());
-    }, [rawMuted]);
+        localStorage.setItem('muted', muted.toString());
+    }, [muted]);
 
     return (
-        <VolumeContext.Provider value={{ volume, setVolume, muted: implicitlyMuted || rawMuted, setMuted, getAudio, setImplicitlyMuted }}>
+        <VolumeContext.Provider value={{ volume, setVolume, muted, setMuted, getAudio }}>
             {children}
         </VolumeContext.Provider>
     );

@@ -4,12 +4,13 @@ export type GameTemplate = {
     name: string,
     questionIds: string[],
 }
+export type AnswerOption = 'a' | 'b' | 'c' | 'd';
 
 export type Question = {
     ID?: string,
     questionText: string,
     questionImageUrl?: string,
-    correctOption: 'a' | 'b' | 'c' | 'd',
+    correctOption: AnswerOption,
     timeLimitSeconds: 10 | 15,
     options: {
         a: string,
@@ -47,6 +48,7 @@ export type CountDownPhase = {
     phase: 'countDown',
     startedAt: number,
     timeLimitSeconds: number,
+    questionId: string,
     questionNumber: number,
     questionText: string,
     questionImageUrl?: string,
@@ -62,6 +64,7 @@ export type CountDownPhase = {
 export type AnswerCheckPhase = {
     phase: 'answerCheck',
     startedAt: number,
+    questionId: string,
     questionNumber: number,
     questionText: string,
     questionImageUrl?: string,
@@ -82,6 +85,7 @@ export type AnswerCheckPhase = {
 export type RevealAnswerPhase = {
     phase: 'revealAnswer',
     startedAt: number,
+    questionId: string,
     questionNumber: number,
     questionText: string,
     questionImageUrl?: string,
@@ -91,7 +95,7 @@ export type RevealAnswerPhase = {
         c: string,
         d: string,
     },
-    correctOption: 'a' | 'b' | 'c' | 'd',
+    correctOption: AnswerOption,
     answerCounts: {
         a: number,
         b: number,
@@ -144,3 +148,11 @@ export type GameStateWithoutDynamicFields =
     | Omit<LastQuestionDonePhase, 'startedAt'>
     | Omit<ShowResultsPhase, 'startedAt' | 'rankings'>
     | Omit<EndedPhase, 'startedAt'>;
+
+export type Answer = {
+    gameId: string,
+    playerId: string,
+    questionId: string,
+    option: AnswerOption,
+    timeLeftMillis: number,
+}

@@ -1,8 +1,8 @@
 import React, { useCallback, useEffect, useState } from 'react';
 import Firebase from '../Firebase';
-import { query, addDoc, FirestoreDataConverter, DocumentData, QueryDocumentSnapshot, SnapshotOptions, getDocs, deleteDoc, getDoc, setDoc, updateDoc } from 'firebase/firestore';
+import { query, addDoc, FirestoreDataConverter, DocumentData, QueryDocumentSnapshot, SnapshotOptions, getDocs, deleteDoc, getDoc, setDoc, updateDoc, where } from 'firebase/firestore';
 import { Link, useParams, useNavigate } from 'react-router-dom';
-import { GameState, GameTemplate, Question, GameStateWithoutDynamicFields } from '../models';
+import { GameState, GameTemplate, Question, GameStateWithoutDynamicFields, Answer } from '../models';
 import { AddGameTemplateModule } from './AddGameTemplateModule';
 import { createConverter } from '../converters';
 import { PlayerPageContent } from '../PlayerPage';
@@ -68,7 +68,7 @@ const GameTemplatesModule = () => {
 export type GameInstance = {
     ID?: string;
     gameTemplateID: string;
-    players: string[];
+    players: { [playerID: string]: string };
     questionIDs: string[];
     createdAt: string;
     state: GameState;
@@ -77,6 +77,12 @@ export type GameInstance = {
 const getGameInstancesByTemplateId = async (templateId: string) => {
     const ref = Firebase.collectionRefOf("games").withConverter(createConverter<GameInstance>());
     return getDocs(query(ref));
+}
+
+export const getAllAnswersByGameId = async (gameId: string) => {
+    const ref = Firebase.collectionRefOf("answers").withConverter(createConverter<Answer>());
+    const q = query(ref, where("gameId", "==", gameId));
+    return getDocs(q);
 }
 
 type GameInstancesModuleProps = {
@@ -110,7 +116,7 @@ const GameInstancesListModule = ({ template }: GameInstancesModuleProps) => {
                 <button onClick={() => {
                     const gameInstance: GameInstance = {
                         gameTemplateID: template.ID!,
-                        players: [],
+                        players: { GameMaster: 'GameMaster' },
                         questionIDs: template.questionIds,
                         createdAt: new Date().toLocaleString('ja-JP', { timeZone: 'Asia/Tokyo', hour12: false }),
                         state: { phase: 'created', startedAt: new Date().getTime() },
@@ -132,12 +138,17 @@ const GameInstancesListModule = ({ template }: GameInstancesModuleProps) => {
                         <div key={gameInstance.ID}>
                             <h5>ID: {gameInstance.ID}</h5>
                             <p>Template ID: {gameInstance.gameTemplateID}</p>
-                            <p>Players: {gameInstance.players.join(', ')}</p>
+                            <p>Players: {Object.values(gameInstance.players).join(', ')}</p>
                             <p>Questions: {gameInstance.questionIDs.join(', ')}</p>
                             <p>Created At: {gameInstance.createdAt}</p>
                             <button onClick={() => {
                                 deleteDoc(Firebase.docRefOf("games", gameInstance.ID!)).then(() => {
-                                    setLoadRequestedAt(new Date().getTime());
+                                    getAllAnswersByGameId(gameInstance.ID!).then((querySnapshot) => {
+                                        querySnapshot.docs.forEach((doc) => {
+                                            deleteDoc(doc.ref);
+                                        });
+                                        setLoadRequestedAt(new Date().getTime());
+                                    });
                                 });
                             }}>Delete</button>
                             <div>
@@ -166,7 +177,7 @@ export const getQuestionsByIds = async (questionIds: string[]) => {
         const ref = Firebase.docRefOf("questions", questionId).withConverter(createConverter<Question>());
         const doc = await getDoc(ref);
         if (doc.exists()) {
-            questions.push(doc.data());
+            questions.push( { ID: doc.id, ...doc.data(), });
         }
     }
     return questions;
@@ -182,7 +193,8 @@ export const getAllStatesForGame = async (game: GameInstance): Promise<GameState
         states.push({ phase: 'readQuestion', questionNumber, questionText: question.questionText });
         states.push({ 
             phase: 'countDown',
-            timeLimitSeconds: 10,
+            timeLimitSeconds: question.timeLimitSeconds,
+            questionId: question.ID!,
             questionNumber,
             questionText: question.questionText,
             options: question.options,
@@ -191,12 +203,14 @@ export const getAllStatesForGame = async (game: GameInstance): Promise<GameState
         });
         states.push({ 
             phase: 'answerCheck',
+            questionId: question.ID!,
             questionNumber,
             questionText: question.questionText,
             options: question.options,
          });
         states.push({ 
             phase: 'revealAnswer',
+            questionId: question.ID!,
             questionNumber,
             questionText: question.questionText,
             options: question.options,
@@ -280,7 +294,7 @@ export const GameInstancePage = ({}: GameInstancePageProps) => {
             <h1>Game Instance Page</h1>
             <p>Game ID: {gameId}</p>
             <button onClick={() => {
-                navigator.clipboard.writeText(`${window.location.origin}/game/${gameId}`);
+                navigator.clipboard.writeText(`${window.location.origin}/#/game/${gameId}`);
             }}>
                 <span role="img" aria-label="clipboard">📋</span> Copy Join Link
             </button>
@@ -303,16 +317,16 @@ export const GameInstancePage = ({}: GameInstancePageProps) => {
                         </div>
                         <p>Player's view</p>
                         <div style={{ border: '1px solid black', padding: '10px', margin: '10px' }}>
-                            <PlayerPageContent gameId={gameId!} encodedPlayerName="GameMaster" />
+                            <PlayerPageContent gameId={gameId!} playerId="GameMaster" />
                         </div>
                         <p>Game Template ID: ${gameInstance!.gameTemplateID}</p>
                         <p>Questions: {gameInstance!.questionIDs.join(', ')}</p>
                         <p>Created At: {gameInstance!.createdAt}</p>
                         <p>Players:</p>
                         <ul>
-                            {gameInstance!.players.map((player) => (
-                                <li key={player}>
-                                    {player} (<Link to={`/game/${gameId}/${encodeURIComponent(player)}`}>Player Page</Link>)
+                            {Object.entries(gameInstance!.players).map(([playerID, playerName]) => (
+                                <li key={playerID}>
+                                    {playerName} (<Link to={`/game/${gameId}/${playerID}`}>Player Page</Link>)
                                 </li>
                             ))}
                         </ul>

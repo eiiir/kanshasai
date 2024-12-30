@@ -1,6 +1,6 @@
 // Import the functions you need from the SDKs you need
 import { initializeApp, FirebaseApp } from "firebase/app";
-import { getFirestore, doc, onSnapshot, getDoc, updateDoc, DocumentReference, collection, CollectionReference } from "firebase/firestore";
+import { getFirestore, doc, onSnapshot, getDoc, updateDoc, DocumentReference, collection, CollectionReference, Unsubscribe } from "firebase/firestore";
 // https://firebase.google.com/docs/web/setup#available-libraries
 
 // Your web app's Firebase configuration
@@ -36,9 +36,8 @@ const myApp = (fb: FirebaseApp) => {
                 return null;
             }
         },
-        listenToUpdate: (docRef: DocumentReference, callback: (data: any) => void) => {
-            onSnapshot(docRef, (doc) => {
-                console.log("Current data: ", doc.data());
+        listenToUpdate: (docRef: DocumentReference, callback: (data: any) => void): Unsubscribe => {
+            return onSnapshot(docRef, (doc) => {
                 callback(doc.data());
             });
         },
