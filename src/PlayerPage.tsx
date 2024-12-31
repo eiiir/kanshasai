@@ -1,12 +1,14 @@
 
-import React, { FormEventHandler, useEffect, useState, useCallback } from 'react';
+import React, { FormEventHandler, useEffect, useState, useCallback, useMemo } from 'react';
 import Firebase from './Firebase';
 import { query, addDoc, FirestoreDataConverter, DocumentData, QueryDocumentSnapshot, SnapshotOptions, getDocs, deleteDoc, runTransaction, getDoc, setDoc, updateDoc } from 'firebase/firestore';
 import { Link, useParams, useNavigate } from 'react-router-dom';
-import { GameTemplate, GameState, ReadQuestionPhase, CountDownPhase, AnswerCheckPhase, RevealAnswerPhase, LastQuestionDonePhase, ShowResultsPhase, AnswerOption, Answer } from './models';
+import { GameTemplate, GameState, ReadQuestionPhase, CountDownPhase, AnswerCheckPhase, RevealAnswerPhase, LastQuestionDonePhase, ShowResultsPhase, AnswerOption, Answer, Ranking } from './models';
 import { createConverter } from './converters';
 import { GameInstance, getGameInstanceById } from './GameMaster/GameMasterPage';
 import { useVolume } from './GlobalComponent';
+import AnimatedRanking from './AnimatedRanking';
+import Fireworks from './Fireworks';
 
 export const PlayerPage = () => {
     const { gameId, playerId } = useParams();
@@ -49,15 +51,9 @@ export const PlayerPageContent = ({ gameId, playerId }: PlayerPageContentProps) 
         <div onClick={onInteract}>
             { !hasInteracted ? <InteractRequiredOverlayComponent />
                 : (<>
-                    <h1>Player's Page</h1>
-                    <p>Game ID: {gameId}</p>
-                    <p>Player Name: {playerName}</p>
                     { gameInstance ? 
                         <div>
                             <GameStateComponent state={gameInstance.state} gameId={gameId} playerId={playerId} />
-                            <h2>Game Details</h2>
-                            <p>Current State:</p>
-                            <pre>{JSON.stringify(gameInstance.state, null, 2)}</pre>
                         </div>
                         : null }
                     {error && <p style={{ color: 'red' }}>{error}</p>}
@@ -71,7 +67,7 @@ export const PlayerPageContent = ({ gameId, playerId }: PlayerPageContentProps) 
 export const InteractRequiredOverlayComponent = () => {
     return (
         <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', height: '100vh' }}>
-            <p>Click anywhere to start the game.</p>
+            <p>画面をクリックして開始</p>
         </div>
     );
 }
@@ -79,7 +75,7 @@ export const InteractRequiredOverlayComponent = () => {
 export const GameStateComponent = ({ state, gameId, playerId }: { state: GameState, gameId: string, playerId: string }) => {
     switch (state.phase) {
         case 'created':
-            return <p>Waiting for the Game Master to start the game...</p>;
+            return <p>ゲーム開始までしばらくお待ちください…</p>;
         case 'started':
             return <StartedGameStateComponent />;
         case 'readQuestion':
@@ -93,7 +89,7 @@ export const GameStateComponent = ({ state, gameId, playerId }: { state: GameSta
         case 'showResults':
             return <ShowResultsGameStateComponent state={state} />;
         case 'ended':
-            return <p>The game has ended.</p>;
+            return <p>お疲れ様でした</p>;
     }
 }
 
@@ -104,7 +100,7 @@ export const StartedGameStateComponent = () => {
         const audio = getAudio('/audio/standup.mp3');
         audio.play();
     }, []);
-    return <p>The game is starting!</p>;
+    return <p>ゲームが始まります</p>;
 }
 
 export const ReadQuestionGameStateComponent = ({ state }: {state: ReadQuestionPhase}) => {
@@ -118,7 +114,7 @@ export const ReadQuestionGameStateComponent = ({ state }: {state: ReadQuestionPh
 
     return (
         <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', height: '100vh' }}>
-            <h1>Question #{questionNumber}</h1>
+            <h1>問題 {questionNumber}</h1>
         </div>
     );
 }
@@ -247,55 +243,180 @@ export type QuestionComponentProps = {
     optionChosen?: AnswerOption,
 }
 
+
 export const QuestionComponent = ({ questionSupplimentImageUrl, correctOption, answerCounts, timeLeft, questionNumber, optionSuppliments, questionText, questionImageUrl, options, onOptionClick, optionChosen }: QuestionComponentProps) => {
+
+    const styles = useMemo(() => ({
+        container: {
+            display: "flex",
+            flexDirection: "column" as const,
+            width: "90%",
+            height: "90vh",
+            margin: "0 auto",
+            border: "2px solid #ccc",
+            borderRadius: "10px",
+            overflow: "hidden",
+            boxShadow: "0 4px 8px rgba(0, 0, 0, 0.1)",
+            backgroundColor: "#f4f4f9",
+        },
+        topSection: {
+            display: "flex",
+            flex: 1,
+            flexDirection: "column" as const,
+            justifyContent: "center",
+            alignItems: "center",
+            padding: "20px",
+            textAlign: "center" as const,
+            backgroundColor: "#ffffff",
+            borderBottom: "2px solid #ddd",
+            position: "relative" as const,
+        },
+        question: {
+            fontSize: "1.5rem",
+            marginBottom: "20px",
+        },
+        image: {
+            maxWidth: "100%",
+            maxHeight: "200px",
+            borderRadius: "5px",
+        },
+        bottomSection: {
+            display: "flex",
+            flexDirection: "column" as const,
+            flex: 1,
+            justifyContent: "space-around",
+            backgroundColor: "#f9f9f9",
+        },
+        option: {
+            padding: "15px",
+            fontSize: "1.2rem",
+            border: "1px solid #ccc",
+            backgroundColor: "#ffffff",
+            transition: "background-color 0.3s",
+            display: "flex",
+            alignItems: "center",
+            flexDirection: "row" as const,
+            borderRadius: "5px",
+        },
+        alphabet: {
+            textAlign: "center" as const,
+            fontWeight: "bold" as const,
+            fontSize: "2rem",
+            color: "darkcyan",
+            flex: "0 0 50px",
+        },
+        optionSuppliment: {
+            paddingLeft: "0.5rem",
+            color: "red",
+        },
+        answerCount: {
+            textAling: "center" as const,
+            fontWeigth: "bold" as const,
+            fontSize: "2rem",
+            color: "gray",
+            flex: "0 0 50px",
+            marginLeft: "auto",
+        },
+        timer: {
+            position: "absolute" as const,
+            bottom: "20px",
+            right: "20px",
+            fontSize: "3rem",
+            color: "#555",
+            fontWeight: "bold",
+            height: "50px",
+            width: "100px",
+            display: "flex",
+            justifyContent: "center",
+            alignItems: "center",
+        },
+    }), []);
+    const onOptionHover = useCallback((e: React.MouseEvent<HTMLButtonElement>) => {
+        if (timeLeft > 0)
+            (e.currentTarget as HTMLButtonElement).style.backgroundColor = "#ddd";
+    }, [timeLeft > 0])
+    const onOptionHoverOut = useCallback((e: React.MouseEvent<HTMLButtonElement>) => {
+        if (timeLeft > 0)
+            (e.currentTarget as HTMLButtonElement).style.backgroundColor = "#fff";
+    }, [timeLeft > 0])
+
     return (
-        <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', height: '100vh' }}>
-            <h1>Question #{questionNumber}</h1>
-            {questionImageUrl &&
-                <img src={questionImageUrl} alt="Question" />
-            }
-            {questionSupplimentImageUrl &&
-                <img src={questionSupplimentImageUrl} alt="QuestionSuppliment" />
-            }
-            <p>{questionText}</p>
-            <ul>
-                <li 
-                    style={correctOption == 'a' ? {color: 'red'} : {}} 
-                    onClick={onOptionClick ? () => onOptionClick({ option: 'a' }) : undefined}
-                >
-                    {optionChosen === 'a' ? '✔️' : ''} {options.a} {answerCounts?.a} {optionSuppliments?.a ? `(${optionSuppliments!.a})` : ''}
-                </li>
-                <li 
-                    style={correctOption == 'b' ? {color: 'red'} : {}} 
-                    onClick={onOptionClick ? () => onOptionClick({ option: 'b' }) : undefined}
-                >
-                    {optionChosen === 'b' ? '✔️' : ''} {options.b} {answerCounts?.b} {optionSuppliments?.b ? `(${optionSuppliments!.b})` : ''}
-                </li>
-                <li 
-                    style={correctOption == 'c' ? {color: 'red'} : {}} 
-                    onClick={onOptionClick ? () => onOptionClick({ option: 'c' }) : undefined}
-                >
-                    {optionChosen === 'c' ? '✔️' : ''} {options.c} {answerCounts?.c} {optionSuppliments?.c ? `(${optionSuppliments!.c})` : ''}
-                </li>
-                <li 
-                    style={correctOption == 'd' ? {color: 'red'} : {}} 
-                    onClick={onOptionClick ? () => onOptionClick({ option: 'd' }) : undefined}
-                >
-                    {optionChosen === 'd' ? '✔️' : ''} {options.d} {answerCounts?.d} {optionSuppliments?.d ? `(${optionSuppliments!.d})` : ''}
-                </li>
-            </ul>
-            <h2>Time Left: {timeLeft} seconds</h2>
+        <div style={styles.container}>
+            <div style={styles.topSection}>
+                <div style={styles.question}>
+                    <p>{questionText}</p>
+                </div>
+                <div>
+                    {questionSupplimentImageUrl || questionImageUrl ?  <img src={questionSupplimentImageUrl||questionImageUrl} style={styles.image} /> : null}
+                </div>
+                { answerCounts ? null : 
+                    <div style={{
+                        ...styles.timer,
+                        ...(timeLeft <= 3 ? { color: "red" } : {}),
+                    }}>{timeLeft}</div>
+                }
+            </div>
+
+            <div style={styles.bottomSection}>
+                {Object.entries(options).sort(([a, _a], [b, _b]) => a.localeCompare(b)).map(([alphabet, option]) => (
+                    <button
+                        key={alphabet}
+                        style={{
+                            ...styles.option,
+                            boxShadow: optionChosen === alphabet ? "inset 0 0 15px orange" : undefined,
+                            cursor: timeLeft > 0 && onOptionClick ? 'pointer' : 'default',
+                            ...(alphabet === correctOption ? {backgroundColor: "palegreen"} : {}), 
+                        }}
+                        onClick={onOptionClick ? () => onOptionClick({ option: alphabet as AnswerOption }) : undefined }
+                        onMouseOver={onOptionHover}
+                        onMouseOut={onOptionHoverOut}
+                    >
+                        <div style={styles.alphabet}>{alphabet.toUpperCase()}</div>
+                        <div>
+                            {option}
+                            <span style={styles.optionSuppliment}>
+                                {optionSuppliments && optionSuppliments[alphabet as AnswerOption] ? `(${optionSuppliments[alphabet as AnswerOption]})` : null}
+                            </span> </div>
+                        <div style={styles.answerCount}>{ answerCounts ? answerCounts[alphabet as AnswerOption] : null}</div>
+                    </button>
+                ))}
+
+            </div>
         </div>
     );
 }
 
 export const LastQuestionDoneGameStateComponent = ({ state }: {state: LastQuestionDonePhase}) => {
     return (
-        <h1>Last question is done. The player ranking will be announced soon.</h1>
+        <h1>ゲーム終了です。まもなく最終結果が発表されます...</h1>
     );
 }
 
+const dummyRankings = ([
+    { player: 'Player1', correctAnswers: 5, averageTimeLeftSeconds: 2.5 },
+    { player: 'Player2', correctAnswers: 8, averageTimeLeftSeconds: 1.2 },
+    { player: 'Player3', correctAnswers: 7, averageTimeLeftSeconds: 3.1 },
+    { player: 'Player4', correctAnswers: 6, averageTimeLeftSeconds: 2.8 },
+    { player: 'Player5', correctAnswers: 9, averageTimeLeftSeconds: 1.0 },
+    { player: 'Player6', correctAnswers: 4, averageTimeLeftSeconds: 2.9 },
+    { player: 'Player7', correctAnswers: 3, averageTimeLeftSeconds: 3.5 },
+    { player: 'Player8', correctAnswers: 2, averageTimeLeftSeconds: 0.4 },
+    { player: 'Player9', correctAnswers: 1, averageTimeLeftSeconds: 4.5 },
+    { player: 'Player10', correctAnswers: 10, averageTimeLeftSeconds: 0.8 },
+    { player: 'Player11', correctAnswers: 5, averageTimeLeftSeconds: 0.5 },
+    { player: 'Player12', correctAnswers: 8, averageTimeLeftSeconds: 1.5 },
+    { player: 'Player13', correctAnswers: 7, averageTimeLeftSeconds: 3.0 },
+    { player: 'Player14', correctAnswers: 6, averageTimeLeftSeconds: 2.6 },
+    { player: 'Player15', correctAnswers: 9, averageTimeLeftSeconds: 1.1 },
+    { player: 'Player16', correctAnswers: 4, averageTimeLeftSeconds: 3.2 },
+    { player: 'Player17', correctAnswers: 3, averageTimeLeftSeconds: 3.8 },
+    { player: 'Player18', correctAnswers: 2, averageTimeLeftSeconds: 4.2 },
+    { player: 'Player19', correctAnswers: 1, averageTimeLeftSeconds: 4.7 },
+    { player: 'Player20', correctAnswers: 10, averageTimeLeftSeconds: 0.9 },
+] as Ranking[]).sort((a, b) => b.correctAnswers - a.correctAnswers || b.averageTimeLeftSeconds - a.averageTimeLeftSeconds);
+
 export const ShowResultsGameStateComponent = ({ state }: {state: ShowResultsPhase}) => {
+    const [showFireworks, setShowFireworks] = useState(false);
     const { getAudio } = useVolume();
     useEffect(() => {
         const audio = getAudio('/audio/show_ranking.mp3');
@@ -303,17 +424,15 @@ export const ShowResultsGameStateComponent = ({ state }: {state: ShowResultsPhas
         audio.onended = () => {
             const victoryAudio = getAudio('/audio/victory.mp3');
             victoryAudio.play();
+            setShowFireworks(true);
         };
     }, []);
 
     return (
         <div>
-            <h1>Game Results</h1>
-            <ol>
-                {state.rankings.map((ranking, i) => (
-                    <li key={i}>{ranking.player} - {ranking.correctAnswers} correct answers in {ranking.averageTimeLeftSeconds.toFixed(3)} seconds</li>
-                ))}
-            </ol>
+            {/* <AnimatedRanking rankings={state.rankings} /> */}
+            <AnimatedRanking rankings={dummyRankings} />
+            { showFireworks ? <Fireworks/> : null}
         </div>
     );
 }
@@ -363,10 +482,10 @@ export const JoinGameModule = () => {
 
     return (
         <div>
-            <h1>Welcome!</h1>
+            <h1>プレイヤー登録</h1>
             <form onSubmit={handleSubmit}>
                 <label>
-                    Your name: 
+                    プレイヤー名: 
                     <input
                         type="text"
                         value={name}
@@ -374,7 +493,7 @@ export const JoinGameModule = () => {
                         required
                     />
                 </label>
-                <button type="submit">Submit</button>
+                <button type="submit">参加</button>
             </form>
             {error && <p style={{ color: 'red' }}>{error}</p>}
         </div>

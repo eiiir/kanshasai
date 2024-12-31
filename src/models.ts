@@ -116,10 +116,16 @@ export type LastQuestionDonePhase = {
     startedAt: number,
 }
 
+export type Ranking = {
+    player: string,
+    correctAnswers: number,
+    averageTimeLeftSeconds: number,
+}
+
 export type ShowResultsPhase = {
     phase: 'showResults',
     startedAt: number,
-    rankings: { player: string, correctAnswers: number, averageTimeLeftSeconds: number }[],
+    rankings: Ranking[],
 }
 
 export type EndedPhase = {

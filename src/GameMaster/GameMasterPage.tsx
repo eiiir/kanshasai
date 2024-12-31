@@ -221,7 +221,7 @@ export const getAllStatesForGame = async (game: GameInstance): Promise<GameState
     });
     states.push({ phase: 'lastQuestionDone' });
     states.push({ phase: 'showResults' });
-    states.push({ phase: 'ended'});
+    // states.push({ phase: 'ended'});
     return states;
 };
 
@@ -327,15 +327,36 @@ export const GameInstancePage = ({}: GameInstancePageProps) => {
         });
     }, [setStateIndex, gameId, gameInstance]);
 
+    const getNextStateButtonLabel = useCallback(() => {
+        if (stateIndex >= statesWithoutDynamicFields.length - 1) {
+            return "(Ended)";
+        }
+        const nextState = statesWithoutDynamicFields[stateIndex + 1];
+        switch (nextState.phase) {
+            case "started": return "「全員、スタンダップ！」"
+            case "readQuestion": return "「問題！」"
+            case "countDown": return "「レディ、ゴー！」"
+            case "answerCheck": return "「アンサーチェック！」"
+            case "revealAnswer": return "「正解はこちら！」"
+            case "lastQuestionDone": return "(結果発表前フェイズへ)"
+            case "showResults": return "「それでは結果発表です！」"
+            case "ended": return "(終了)"
+            default: return "To Next state"
+        }
+
+    }, [stateIndex, statesWithoutDynamicFields]);
+
     return (
         <div>
-            <h1>Game Instance Page</h1>
-            <p>Game ID: {gameId}</p>
-            <button onClick={() => {
-                navigator.clipboard.writeText(`${window.location.origin}/#/game/${gameId}`);
-            }}>
-                <span role="img" aria-label="clipboard">📋</span> Copy Join Link
-            </button>
+            <div style={{display: "flex", flexDirection: "row", alignItems: "center"}}>
+                <h1 style={{display: "inline"}}>Game Instance Page</h1>
+                <span style={{ margin: "10px" }}>Game ID: {gameId}</span>
+                <button style={{margin: "10px"}} onClick={() => {
+                    navigator.clipboard.writeText(`${window.location.origin}/#/game/${gameId}`);
+                }}>
+                    <span role="img" aria-label="clipboard">📋</span>Copy Join Link
+                </button>
+            </div>
             {loading ?
                     <p>Loading...</p>
                 : gameInstance == null ?
@@ -344,14 +365,8 @@ export const GameInstancePage = ({}: GameInstancePageProps) => {
                     <div>
                         <p>GM Control</p>
                         <div style={{ border: '1px solid red', padding: '10px', margin: '10px' }}>
-                            <p>Current State:</p>
-                            <pre>{JSON.stringify(gameInstance.state, null, 2)}</pre>
-                            <p>Next State:</p>
-                            {stateIndex + 1 < statesWithoutDynamicFields.length ? (
-                                <pre>{JSON.stringify(statesWithoutDynamicFields[stateIndex + 1], null, 2)}</pre>
-                                ): "None"
-                            }
-                            <button onClick={() => moveToNextState(stateIndex, statesWithoutDynamicFields)}>Move to Next State</button>
+                            <GMControlContent state={gameInstance.state} />
+                            <button onClick={() => moveToNextState(stateIndex, statesWithoutDynamicFields)}>{getNextStateButtonLabel()}</button>
                         </div>
                         <p>Player's view</p>
                         <div style={{ border: '1px solid black', padding: '10px', margin: '10px' }}>
@@ -376,6 +391,16 @@ export const GameInstancePage = ({}: GameInstancePageProps) => {
             </div>
         </div>
     );
+}
+
+export const GMControlContent = ({state}: {state: GameState}) => {
+    switch (state.phase) {
+        case "readQuestion": {
+            return <p>{state.questionText}</p>
+        }
+        default: return null
+    }
+
 }
 
 export default GameMasterPage;
