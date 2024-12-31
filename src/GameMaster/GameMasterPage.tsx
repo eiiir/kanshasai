@@ -16,6 +16,8 @@ const GameMasterPage = () => {
     return (
         <div>
             <h1>Game Master's Page</h1>
+            <h2>Questions</h2>
+            <Link to="/gm/questions">Go to Questions page</Link>
             <h2>Add Game Template</h2>
             <AddGameTemplateModule />
             <h2>All Game Templates</h2>

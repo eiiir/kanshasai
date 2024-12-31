@@ -33,6 +33,7 @@ module.exports = {
     new CopyWebpackPlugin({
       patterns: [
         { from: 'resources/audio', to: 'audio' },
+        { from: 'resources/images', to: 'images' },
       ],
     }),
   ],

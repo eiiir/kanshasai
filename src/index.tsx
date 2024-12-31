@@ -3,6 +3,7 @@ import App from './App';
 import './styles.css';
 import { HashRouter as Router, Route, Routes, Navigate } from 'react-router-dom';
 import GameMasterPage, { GameInstancePage } from './GameMaster/GameMasterPage';
+import { QuestionsPage } from './GameMaster/QuestionsPage';
 import { JoinGameModule, PlayerPage } from './PlayerPage';
 import { GlobalComponent, VolumeProvider, useVolume } from './GlobalComponent';
 import React, { ReactNode } from 'react';
@@ -19,6 +20,7 @@ root.render(
             <Routes>
                 <Route index element={<App />} />
                 <Route path="/gm" element={<GameMasterPage />} />
+                <Route path="/gm/questions" element={<QuestionsPage />} />
                 <Route path="/gm/game/:gameId" element={<GameInstancePage />} />
                 <Route path="/game/:gameId" element={<JoinGameModule />} />
                 <Route path="/game/:gameId/:playerId" element={<PlayerPage />} />

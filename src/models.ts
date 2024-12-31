@@ -25,6 +25,8 @@ export type Question = {
         c?: string,
         d?: string,
     },
+    createdAt?: number;
+    lastUpdatedAt?: number;
 }
 
 export type CreatedPhase = {
