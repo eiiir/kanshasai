@@ -430,8 +430,7 @@ export const ShowResultsGameStateComponent = ({ state }: {state: ShowResultsPhas
 
     return (
         <div>
-            {/* <AnimatedRanking rankings={state.rankings} /> */}
-            <AnimatedRanking rankings={dummyRankings} />
+            <AnimatedRanking rankings={state.rankings} />
             { showFireworks ? <Fireworks/> : null}
         </div>
     );
