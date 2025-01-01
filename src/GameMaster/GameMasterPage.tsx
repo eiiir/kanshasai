@@ -315,7 +315,9 @@ export const GameInstancePage = ({}: GameInstancePageProps) => {
                     correctAnswers,
                     averageTimeLeftSeconds: correctAnswers == 0 ? 0 : accumulatedTimeLeftSeconds / correctAnswers / 1000,
                 };
-            }).sort((a, b) => {
+            })
+            .filter((p) => p.player != "GameMaster")
+            .sort((a, b) => {
                 if (a.correctAnswers === b.correctAnswers) {
                     return b.averageTimeLeftSeconds - a.averageTimeLeftSeconds
                 } else {
