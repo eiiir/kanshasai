@@ -19,7 +19,7 @@ jobs:
       - name: Set up Node.js
         uses: actions/setup-node@v2
         with:
-          node-version: '16'
+          node-version: '20'
 
       - name: Install dependencies
         run: npm install
@@ -33,6 +33,7 @@ jobs:
           github_token: ${{ secrets.GITHUB_TOKEN }}
           publish_dir: ./dist
           # cname: your-custom-domain.com # Optional: if you have a custom domain
+      
       - name: Deploy to Firebase Hosting
         uses: FirebaseExtended/action-hosting-deploy@v0
         with:
