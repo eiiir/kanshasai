@@ -365,6 +365,7 @@ export const QuestionComponent = ({ questionSupplimentImageUrl, correctOption, a
                             ...styles.option,
                             boxShadow: optionChosen === alphabet ? "inset 0 0 15px orange" : undefined,
                             cursor: timeLeft > 0 && onOptionClick ? 'pointer' : 'default',
+                            ...(timeLeft === 0 && { background: "#ffffff"}),
                             ...(alphabet === correctOption ? {backgroundColor: "palegreen"} : {}), 
                         }}
                         onClick={onOptionClick ? () => onOptionClick({ option: alphabet as AnswerOption }) : undefined }

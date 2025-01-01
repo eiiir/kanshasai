@@ -18,12 +18,13 @@ root.render(
         <GlobalComponent />
         <Router>
             <Routes>
-                <Route index element={<App />} />
+                <Route index element={null} />
                 <Route path="/gm" element={<GameMasterPage />} />
                 <Route path="/gm/questions" element={<QuestionsPage />} />
                 <Route path="/gm/game/:gameId" element={<GameInstancePage />} />
                 <Route path="/game/:gameId" element={<JoinGameModule />} />
                 <Route path="/game/:gameId/:playerId" element={<PlayerPage />} />
+                <Route path="/test" element={<App />} />
                 <Route path="*" element={<Navigate to="/" replace />} />
             </Routes>
         </Router>
