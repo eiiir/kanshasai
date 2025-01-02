@@ -1,11 +1,11 @@
 
-import React, { FormEventHandler, useEffect, useState, useCallback, useMemo } from 'react';
+import React, { FormEventHandler, useEffect, useState, useCallback, useMemo, useRef, useContext } from 'react';
 import Firebase from './Firebase';
-import { query, addDoc, FirestoreDataConverter, DocumentData, QueryDocumentSnapshot, SnapshotOptions, getDocs, deleteDoc, runTransaction, getDoc, setDoc, updateDoc } from 'firebase/firestore';
+import { query, addDoc, FirestoreDataConverter, DocumentData, QueryDocumentSnapshot, SnapshotOptions, getDocs, deleteDoc, runTransaction, getDoc, setDoc, updateDoc, Timestamp, serverTimestamp } from 'firebase/firestore';
 import { Link, useParams, useNavigate } from 'react-router-dom';
-import { GameTemplate, GameState, ReadQuestionPhase, CountDownPhase, AnswerCheckPhase, RevealAnswerPhase, LastQuestionDonePhase, ShowResultsPhase, AnswerOption, Answer, Ranking } from './models';
+import { GameInstance, GameTemplate, GameState, ReadQuestionPhase, CountDownPhase, AnswerCheckPhase, RevealAnswerPhase, LastQuestionDonePhase, ShowResultsPhase, AnswerOption, Answer, Ranking } from './models';
 import { createConverter } from './converters';
-import { GameInstance, getGameInstanceById } from './GameMaster/GameMasterPage';
+import { getGameInstanceById } from './GameMaster/GameMasterPage';
 import { useVolume } from './GlobalComponent';
 import AnimatedRanking from './AnimatedRanking';
 import Fireworks from './Fireworks';
@@ -53,7 +53,9 @@ export const PlayerPageContent = ({ gameId, playerId }: PlayerPageContentProps) 
                 : (<>
                     { gameInstance ? 
                         <div>
-                            <GameStateComponent state={gameInstance.state} gameId={gameId} playerId={playerId} />
+                            <TimestampDiffProvider state={gameInstance.state}>
+                                <GameStateComponent state={gameInstance.state} gameId={gameId} playerId={playerId} />
+                            </TimestampDiffProvider>
                         </div>
                         : null }
                     {error && <p style={{ color: 'red' }}>{error}</p>}
@@ -71,6 +73,44 @@ export const InteractRequiredOverlayComponent = () => {
         </div>
     );
 }
+
+// Hook to calculate the difference between the server timestamp and the client timestamp
+export const useTimestampDiffMillis = (state: GameState) => {
+    const [timestampDiffMillis, setTimestampDiffMillis] = useState(0);
+    const prevPhaseRef = useRef<string | null>(null);
+    useEffect(() => {
+        const prevPhase = prevPhaseRef.current;
+        if (prevPhase !== state.phase) {
+            if (prevPhase !== null) {
+                setTimestampDiffMillis(Date.now() - (state.startedAt as Timestamp).toMillis());
+            }
+            prevPhaseRef.current = state.phase;
+        }
+    }, [state.phase]);
+    useEffect(() => {
+        const savedTimestampDiff = localStorage.getItem('timestampDiffMillis');
+        if (savedTimestampDiff) {
+            setTimestampDiffMillis(parseInt(savedTimestampDiff, 10));
+        }
+    }, []);
+    useEffect(() => {
+        if (timestampDiffMillis !== 0) {
+            localStorage.setItem('timestampDiffMillis', timestampDiffMillis.toString());
+        }
+    }, [timestampDiffMillis]);
+    return { timestampDiffMillis };
+}
+
+export const TimestampDiffContext = React.createContext<number>(0);
+
+export const TimestampDiffProvider: React.FC<{ state: GameState, children: React.ReactNode }> = ({ state, children }) => {
+    const { timestampDiffMillis } = useTimestampDiffMillis(state);
+    return (
+        <TimestampDiffContext.Provider value={timestampDiffMillis}>
+            {children}
+        </TimestampDiffContext.Provider>
+    );
+};
 
 export const GameStateComponent = ({ state, gameId, playerId }: { state: GameState, gameId: string, playerId: string }) => {
     switch (state.phase) {
@@ -119,13 +159,13 @@ export const ReadQuestionGameStateComponent = ({ state }: {state: ReadQuestionPh
     );
 }
 
-export const submitAnswer = async (gameId: string, questionId: string, playerId: string, option: AnswerOption, timeLeftMillis: number ) => {
+export const submitAnswer = async (gameId: string, questionId: string, playerId: string, option: AnswerOption ) => {
     const docRef = Firebase.docRefOf("answers", `${gameId}_${questionId}_${playerId}`);
-    await setDoc(docRef, { gameId, playerId, questionId, option, timeLeftMillis });
+    await setDoc(docRef, { gameId, playerId, questionId, option, updatedAt: serverTimestamp() });
 }
 
 export const QuestionGameStatesComponent = ({ state, gameId, playerId }: {state: CountDownPhase | AnswerCheckPhase | RevealAnswerPhase, gameId: string, playerId: string }) => {
-    const fallback = {
+    const fallback = useMemo(() => ({
         isLastQuestion: false,
         timeLimitSeconds: 10,
         answerCounts: undefined,
@@ -133,17 +173,18 @@ export const QuestionGameStatesComponent = ({ state, gameId, playerId }: {state:
         optionSuppliments: undefined,
         optionSupplimentImageUrl: undefined,
         questionSupplimentImageUrl: undefined,
-    };
+    }), []);
     const { isLastQuestion, timeLimitSeconds, questionId, questionNumber, questionText, questionImageUrl, options, startedAt, answerCounts, correctOption, 
         optionSuppliments, optionSupplimentImageUrl, questionSupplimentImageUrl,
       }
         = { ...fallback, ...state };
+    const timestampDiffMillis = useContext(TimestampDiffContext);
     const getTimeLeft = () => {
-        const timePassed = (Date.now() - startedAt) / 1000;
+        const timePassed = (Date.now() - (startedAt as Timestamp).toMillis() - timestampDiffMillis) / 1000;
         return Math.max(timeLimitSeconds - timePassed, 0);
     }
     const { getAudio } = useVolume();
-    const [timeLeft, setTimeLeft] = useState(state.phase === 'countDown' ? Math.floor(getTimeLeft()) : 0);
+    const [timeLeft, setTimeLeft] = useState(state.phase === 'countDown' ? Math.min(Math.floor(getTimeLeft()), timeLimitSeconds) : 0);
     const [answer, setAnswer] = useState<Answer | null>(null);
 
     useEffect(() => {
@@ -154,6 +195,17 @@ export const QuestionGameStatesComponent = ({ state, gameId, playerId }: {state:
         });
         return () => unsubscribe();
     }, [gameId, state.questionId, playerId]);
+
+    useEffect(() => {
+        if (state.phase === 'countDown') {
+            setTimeLeft(Math.min(Math.floor(getTimeLeft()), timeLimitSeconds));
+            const src = `/audio/count_down_${timeLimitSeconds}s.mp3`;
+            const audio = getAudio(src);
+            const currentTimeToSet = (timeLimitSeconds - Math.min(Math.floor(getTimeLeft()), timeLimitSeconds));
+            audio.currentTime = currentTimeToSet;
+            audio.play();
+        }
+    }, [timestampDiffMillis]);
 
     useEffect(() => {
         if (timeLeft === 0) {
@@ -192,7 +244,7 @@ export const QuestionGameStatesComponent = ({ state, gameId, playerId }: {state:
     }, [state.phase])
 
     const onOptionClick = useCallback(({ option }: { option: AnswerOption}) => {
-        submitAnswer(gameId, questionId, playerId, option, getTimeLeft() * 1000);
+        submitAnswer(gameId, questionId, playerId, option );
     }, [gameId, questionId, playerId])
 
     return (

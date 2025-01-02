@@ -16,6 +16,8 @@ const firebaseConfig = {
 // Initialize Firebase
 const fb = initializeApp(firebaseConfig);
 
+const defaultSnapshotOptions = { serverTimestamps: 'estimate' as const };
+
 const myApp = (fb: FirebaseApp) => {
     const db = getFirestore(fb);
 
@@ -38,7 +40,7 @@ const myApp = (fb: FirebaseApp) => {
         },
         listenToUpdate: (docRef: DocumentReference, callback: (data: any) => void): Unsubscribe => {
             return onSnapshot(docRef, (doc) => {
-                callback(doc.data());
+                callback({ ...doc.data(defaultSnapshotOptions), ID: doc.id });
             });
         },
         updateValue: (docRef: DocumentReference, newValue: string) => {

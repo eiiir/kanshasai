@@ -1,8 +1,8 @@
 import React, { useCallback, useEffect, useState } from 'react';
 import Firebase from '../Firebase';
-import { query, addDoc, FirestoreDataConverter, DocumentData, QueryDocumentSnapshot, SnapshotOptions, getDocs, deleteDoc, getDoc, setDoc, updateDoc, where } from 'firebase/firestore';
+import { query, addDoc, FirestoreDataConverter, DocumentData, QueryDocumentSnapshot, SnapshotOptions, getDocs, deleteDoc, getDoc, setDoc, updateDoc, where, serverTimestamp, Timestamp } from 'firebase/firestore';
 import { Link, useParams, useNavigate } from 'react-router-dom';
-import { GameState, GameTemplate, Question, GameStateWithoutDynamicFields, Answer, AnswerOption } from '../models';
+import { GameInstance, GameState, GameTemplate, Question, GameStateWithoutDynamicFields, Answer, AnswerOption } from '../models';
 import { AddGameTemplateModule } from './AddGameTemplateModule';
 import { createConverter } from '../converters';
 import { PlayerPageContent } from '../PlayerPage';
@@ -46,16 +46,29 @@ const GameTemplatesModule = () => {
     }, []);
 
     return (
-        <div>
+        <div style={{ padding: '20px', fontFamily: 'Arial, sans-serif', color: '#333' }}>
             {loading ? (
-                <p>Loading...</p>
+                <p style={{ textAlign: 'center', fontSize: '18px', fontWeight: 'bold' }}>Loading...</p>
             ) : (
-                <div>
+                <div style={{ display: 'grid', gap: '20px' }}>
                     {gameTemplates.map((gameTemplate) => (
-                        <div key={gameTemplate.ID ?? ''}>
-                            <h3>Name: {gameTemplate.name}</h3>
-                            <p>ID: {gameTemplate.ID}</p>
-                            <p>QuestionIDs: {gameTemplate.questionIds.join(', ')}</p>
+                        <div
+                            key={gameTemplate.ID ?? ''}
+                            style={{
+                                border: '1px solid #ccc',
+                                borderRadius: '8px',
+                                padding: '16px',
+                                background: '#f9f9f9',
+                                boxShadow: '0px 2px 5px rgba(0, 0, 0, 0.1)',
+                            }}
+                        >
+                            <h3 style={{ margin: '0 0 8px' }}>Name: {gameTemplate.name}</h3>
+                            <p style={{ margin: '0 0 4px' }}>
+                                <strong>ID:</strong> {gameTemplate.ID}
+                            </p>
+                            <p style={{ margin: '0 0 8px' }}>
+                                <strong>Question IDs:</strong> {gameTemplate.questionIds.join(', ')}
+                            </p>
                             <div>
                                 <GameInstancesListModule template={gameTemplate} />
                             </div>
@@ -67,18 +80,9 @@ const GameTemplatesModule = () => {
     );
 }
 
-export type GameInstance = {
-    ID?: string;
-    gameTemplateID: string;
-    players: { [playerID: string]: string };
-    questionIDs: string[];
-    createdAt: string;
-    state: GameState;
-}
-
 const getGameInstancesByTemplateId = async (templateId: string) => {
     const ref = Firebase.collectionRefOf("games").withConverter(createConverter<GameInstance>());
-    return getDocs(query(ref));
+    return getDocs(query(ref, where("gameTemplateID", "==", templateId)));
 }
 
 export const getAllAnswersByGameId = async (gameId: string) => {
@@ -110,51 +114,109 @@ const GameInstancesListModule = ({ template }: GameInstancesModuleProps) => {
         }
     }, [loadRequestedAt]);
 
-
     return (
-        <div>
-            <div>
-                <h4>Create A New Game</h4>
-                <button onClick={() => {
-                    const gameInstance: GameInstance = {
-                        gameTemplateID: template.ID!,
-                        players: { GameMaster: 'GameMaster' },
-                        questionIDs: template.questionIds,
-                        createdAt: new Date().toLocaleString('ja-JP', { timeZone: 'Asia/Tokyo', hour12: false }),
-                        state: { phase: 'created', startedAt: new Date().getTime() },
-                    }
+        <div style={{ padding: '16px', fontFamily: 'Arial, sans-serif', color: '#333' }}>
+            <div style={{ marginBottom: '16px', }} >
+                <button
+                    onClick={() => {
+                        const gameInstance: GameInstance = {
+                            gameTemplateID: template.ID!,
+                            players: { GameMaster: 'GameMaster' },
+                            questionIDs: template.questionIds,
+                            createdAt: new Date().toLocaleString('ja-JP', { timeZone: 'Asia/Tokyo', hour12: false }),
+                            state: { phase: 'created', startedAt: serverTimestamp() },
+                            pastStates: [],
+                        };
 
-                    addDoc(Firebase.collectionRefOf("games"), gameInstance).then(() => {
-                        setLoadRequestedAt(new Date().getTime());
-                    });
-                }}>Create</button>
+                        addDoc(Firebase.collectionRefOf('games'), gameInstance).then(() => {
+                            setLoadRequestedAt(new Date().getTime());
+                        });
+                    }}
+                    style={{
+                        padding: '8px 16px',
+                        background: '#4caf50',
+                        color: '#fff',
+                        border: 'none',
+                        borderRadius: '4px',
+                        cursor: 'pointer',
+                    }}
+                >
+                    Create a new game
+                </button>
             </div>
-            <div style={{ cursor: 'pointer' }} onClick={() => setLoadRequestedAt(new Date().getTime())}>
+            <div
+                style={{
+                    cursor: 'pointer',
+                    padding: '12px',
+                    background: '#e3f2fd',
+                    borderRadius: '8px',
+                    border: '1px solid #64b5f6',
+                    marginBottom: '16px',
+                    textAlign: 'center',
+                }}
+                onClick={() => setLoadRequestedAt(new Date().getTime())}
+            >
                 <h4>Game Instances (click to load)</h4>
             </div>
-            {gameInstances.length == 0 ? (
-                null
-            ) : (
-                <div>
+            {gameInstances.length === 0 ? null : (
+                <div style={{ display: 'grid', gap: '12px' }}>
                     {gameInstances.map((gameInstance) => (
-                        <div key={gameInstance.ID}>
-                            <h5>ID: {gameInstance.ID}</h5>
-                            <p>Template ID: {gameInstance.gameTemplateID}</p>
-                            <p>Players: {Object.values(gameInstance.players).join(', ')}</p>
-                            <p>Questions: {gameInstance.questionIDs.join(', ')}</p>
-                            <p>Created At: {gameInstance.createdAt}</p>
-                            <button onClick={() => {
-                                deleteDoc(Firebase.docRefOf("games", gameInstance.ID!)).then(() => {
-                                    getAllAnswersByGameId(gameInstance.ID!).then((querySnapshot) => {
-                                        querySnapshot.docs.forEach((doc) => {
-                                            deleteDoc(doc.ref);
+                        <div
+                            key={gameInstance.ID}
+                            style={{
+                                border: '1px solid #ccc',
+                                borderRadius: '8px',
+                                padding: '12px',
+                                background: '#fff',
+                                boxShadow: '0px 2px 5px rgba(0, 0, 0, 0.1)',
+                            }}
+                        >
+                            <h5 style={{ margin: '0 0 8px' }}>ID: {gameInstance.ID}</h5>
+                            <p style={{ margin: '0 0 4px' }}>
+                                <strong>Template ID:</strong> {gameInstance.gameTemplateID}
+                            </p>
+                            <p style={{ margin: '0 0 4px' }}>
+                                <strong>Players:</strong> {Object.values(gameInstance.players).join(', ')}
+                            </p>
+                            <p style={{ margin: '0 0 4px' }}>
+                                <strong>Questions:</strong> {gameInstance.questionIDs.join(', ')}
+                            </p>
+                            <p style={{ margin: '0 0 12px' }}>
+                                <strong>Created At:</strong> {gameInstance.createdAt}
+                            </p>
+                            <button
+                                onClick={() => {
+                                    deleteDoc(Firebase.docRefOf('games', gameInstance.ID!)).then(() => {
+                                        getAllAnswersByGameId(gameInstance.ID!).then((querySnapshot) => {
+                                            querySnapshot.docs.forEach((doc) => {
+                                                deleteDoc(doc.ref);
+                                            });
+                                            setLoadRequestedAt(new Date().getTime());
                                         });
-                                        setLoadRequestedAt(new Date().getTime());
                                     });
-                                });
-                            }}>Delete</button>
-                            <div>
-                                <Link to={`/gm/game/${gameInstance.ID}`}>Go to game page</Link>
+                                }}
+                                style={{
+                                    padding: '8px 16px',
+                                    background: '#f44336',
+                                    color: '#fff',
+                                    border: 'none',
+                                    borderRadius: '4px',
+                                    cursor: 'pointer',
+                                }}
+                            >
+                                Delete
+                            </button>
+                            <div style={{ marginTop: '8px' }}>
+                                <Link
+                                    to={`/gm/game/${gameInstance.ID}`}
+                                    style={{
+                                        textDecoration: 'none',
+                                        color: '#2196f3',
+                                        fontWeight: 'bold',
+                                    }}
+                                >
+                                    Go to game page
+                                </Link>
                             </div>
                         </div>
                     ))}
@@ -227,9 +289,9 @@ export const getAllStatesForGame = async (game: GameInstance): Promise<GameState
     return states;
 };
 
-export const updateState = async (gameId: string, newState: GameState) => {
+export const updateState = async (gameId: string, game: GameInstance, newState: GameState) => {
     const docRef = Firebase.docRefOf("games", gameId);
-    await updateDoc(docRef, { state: newState });
+    await updateDoc(docRef, { state: newState, pastStates: [...game.pastStates, game.state] });
 };
 
 export const getAnswers = async (gameId: string, questionId: string) => {
@@ -248,7 +310,7 @@ export const GameInstancePage = ({}: GameInstancePageProps) => {
     useEffect(() => {
         getGameInstanceById(gameId!).then((doc) => {
             if(doc.exists()) {
-                setGameInstance(doc.data());
+                setGameInstance({ ...doc.data(), ID: doc.id });
                 getAllStatesForGame(doc.data()).then((states) => {
                     setStatesWithoutDynamicFields(states);
                     const currentState = doc.data().state;
@@ -268,7 +330,7 @@ export const GameInstancePage = ({}: GameInstancePageProps) => {
         });
         setLoading(false);
         Firebase.listenToUpdate(Firebase.docRefOf("games", gameId!), (data) => {
-            setGameInstance(data);
+            setGameInstance({...data, ID: data.id});
         });
     }, [gameId]);
 
@@ -277,7 +339,7 @@ export const GameInstancePage = ({}: GameInstancePageProps) => {
             return;
         }
         const nextState = statesWithoutDynamicFields[stateIndex + 1];
-        const stateToSet: any = { ...nextState, startedAt: new Date().getTime() };
+        const stateToSet: any = { ...nextState, startedAt: serverTimestamp() };
         if (nextState.phase === 'answerCheck' || nextState.phase === 'revealAnswer') {
             const querySnapshot = await getAnswers(gameId!, nextState.questionId);
             const answerCounts = querySnapshot.docs
@@ -291,19 +353,33 @@ export const GameInstancePage = ({}: GameInstancePageProps) => {
         }
         if (nextState.phase === 'showResults') {
             const allAnswers = await getAllAnswersByGameId(gameId!)
-            const correctAnswersMap = statesWithoutDynamicFields
+            const countDownStartedTimestampMap = gameInstance!.pastStates
+                .filter((state) => state.phase === 'countDown')
+                .map((state) => ({ questionId: state.questionId, startedAt: state.startedAt as Timestamp, timeLimitSeconds: state.timeLimitSeconds }))
+                .reduce((acc, { questionId, startedAt, timeLimitSeconds }) => {
+                    acc[questionId] = { startedAt, timeLimitSeconds };
+                    return acc;
+                }, {} as { [questionId: string]: { startedAt: Timestamp, timeLimitSeconds: number } });
+            const correctAnswersMap = gameInstance!.pastStates
                 .filter((state) => state.phase === 'revealAnswer')
                 .map((state) => ({ questionId: state.questionId, correctOption: state.correctOption }))
                 .reduce((acc, { questionId, correctOption }) => {
-                    acc[questionId] = correctOption;
+                    acc[questionId] = { correctOption, startedAt: countDownStartedTimestampMap[questionId].startedAt, timeLimitSeconds: countDownStartedTimestampMap[questionId].timeLimitSeconds };
                     return acc;
-                }, {} as { [questionId: string]: string });
+                }, {} as { [questionId: string]: { correctOption: AnswerOption, startedAt: Timestamp, timeLimitSeconds: number } });
             const playerIdToPointsAndAccumulatedTime = allAnswers.docs.map((doc) => doc.data())
-                .reduce((acc, { playerId, option, questionId, timeLeftMillis }) => {
-                        const isCorrect = option === correctAnswersMap[questionId]
+                .reduce((acc, { playerId, option, questionId, updatedAt }) => {
+                        const { correctOption, startedAt, timeLimitSeconds } = correctAnswersMap[questionId];
+                        const isCorrect = option === correctOption;
                         acc[playerId] = acc[playerId] ?? { points: 0, accumulatedTimeLeft: 0 }
                         acc[playerId].points = (acc[playerId]?.points ?? 0) + ( isCorrect ? 1 : 0)
-                        acc[playerId].accumulatedTimeLeft = (acc[playerId]?.accumulatedTimeLeft ?? 0) + (isCorrect ? timeLeftMillis : 0)
+                        const timeLeftMillis = timeLimitSeconds * 1000 - (updatedAt as Timestamp).toMillis() - startedAt.toMillis()
+                        if (timeLeftMillis < 0) {
+                            console.log("Found an answer after the time limit", playerId, questionId, timeLeftMillis);
+                        }
+                        acc[playerId].accumulatedTimeLeft = (acc[playerId]?.accumulatedTimeLeft ?? 0)
+                            // Allowing negative time to account for slow internet, up to 1 second
+                             + (isCorrect && timeLeftMillis >= -1000 ? Math.max(timeLeftMillis, 0) : 0)
                         return acc;
                     }, {} as { [playerId: string]: { points: number, accumulatedTimeLeft: number } }
                 );
@@ -326,7 +402,7 @@ export const GameInstancePage = ({}: GameInstancePageProps) => {
             })
             stateToSet['rankings'] = rankings;
         }
-        updateState(gameId!, stateToSet as GameState).then(() => {
+        updateState(gameId!, gameInstance!, stateToSet as GameState).then(() => {
             setStateIndex(stateIndex + 1);
         });
     }, [setStateIndex, gameId, gameInstance]);

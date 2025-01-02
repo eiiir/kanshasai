@@ -2,9 +2,9 @@ import React, { FormEventHandler, useEffect, useState, createContext, useContext
 import Firebase from './Firebase';
 import { query, addDoc, FirestoreDataConverter, DocumentData, QueryDocumentSnapshot, SnapshotOptions, getDocs, deleteDoc, runTransaction } from 'firebase/firestore';
 import { Link, useParams, useNavigate } from 'react-router-dom';
-import { GameTemplate, GameState } from './models';
+import { GameInstance, GameTemplate, GameState } from './models';
 import { createConverter } from './converters';
-import { GameInstance, getGameInstanceById } from './GameMaster/GameMasterPage';
+import { getGameInstanceById } from './GameMaster/GameMasterPage';
 
 const VolumeContext = createContext({
     volume: 1,

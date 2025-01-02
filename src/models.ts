@@ -1,3 +1,14 @@
+import { FieldValue, Timestamp } from "firebase/firestore";
+
+export type GameInstance = {
+    ID?: string;
+    gameTemplateID: string;
+    players: { [playerID: string]: string };
+    questionIDs: string[];
+    createdAt: string;
+    state: GameState;
+    pastStates: GameState[];
+}
 
 export type GameTemplate = {
     ID?: string,
@@ -31,24 +42,24 @@ export type Question = {
 
 export type CreatedPhase = {
     phase: 'created',
-    startedAt: number,
+    startedAt: Timestamp | FieldValue,
 }
 
 export type StartedPhase = {
     phase: 'started',
-    startedAt: number,
+    startedAt: Timestamp | FieldValue,
 }
 
 export type ReadQuestionPhase = {
     phase: 'readQuestion',
-    startedAt: number,
+    startedAt: Timestamp | FieldValue,
     questionNumber: number,
     questionText: string,
 }
 
 export type CountDownPhase = {
     phase: 'countDown',
-    startedAt: number,
+    startedAt: Timestamp | FieldValue,
     timeLimitSeconds: number,
     questionId: string,
     questionNumber: number,
@@ -65,7 +76,7 @@ export type CountDownPhase = {
 
 export type AnswerCheckPhase = {
     phase: 'answerCheck',
-    startedAt: number,
+    startedAt: Timestamp | FieldValue,
     questionId: string,
     questionNumber: number,
     questionText: string,
@@ -86,7 +97,7 @@ export type AnswerCheckPhase = {
 
 export type RevealAnswerPhase = {
     phase: 'revealAnswer',
-    startedAt: number,
+    startedAt: Timestamp | FieldValue,
     questionId: string,
     questionNumber: number,
     questionText: string,
@@ -115,7 +126,7 @@ export type RevealAnswerPhase = {
 
 export type LastQuestionDonePhase = {
     phase: 'lastQuestionDone',
-    startedAt: number,
+    startedAt: Timestamp | FieldValue,
 }
 
 export type Ranking = {
@@ -126,13 +137,13 @@ export type Ranking = {
 
 export type ShowResultsPhase = {
     phase: 'showResults',
-    startedAt: number,
+    startedAt: Timestamp | FieldValue,
     rankings: Ranking[],
 }
 
 export type EndedPhase = {
     phase: 'ended',
-    startedAt: number,
+    startedAt: Timestamp | FieldValue,
 }
 
 export type GameState = 
@@ -162,5 +173,5 @@ export type Answer = {
     playerId: string,
     questionId: string,
     option: AnswerOption,
-    timeLeftMillis: number,
+    updatedAt: Timestamp | FieldValue,
 }
