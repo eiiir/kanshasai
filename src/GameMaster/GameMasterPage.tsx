@@ -373,7 +373,7 @@ export const GameInstancePage = ({}: GameInstancePageProps) => {
                         const isCorrect = option === correctOption;
                         acc[playerId] = acc[playerId] ?? { points: 0, accumulatedTimeLeft: 0 }
                         acc[playerId].points = (acc[playerId]?.points ?? 0) + ( isCorrect ? 1 : 0)
-                        const timeLeftMillis = timeLimitSeconds * 1000 - (updatedAt as Timestamp).toMillis() - startedAt.toMillis()
+                        const timeLeftMillis = timeLimitSeconds * 1000 - ((updatedAt as Timestamp).toMillis() - startedAt.toMillis())
                         if (timeLeftMillis < 0) {
                             console.log("Found an answer after the time limit", playerId, questionId, timeLeftMillis);
                         }
